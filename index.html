@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a17">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IntervalCoach">
+<title>IntervalCoach</title>
+<style>
+  :root {
+    --bg: #0f1a17;
+    --card: #17251f;
+    --card2: #1f3129;
+    --text: #eef5f1;
+    --text-dim: #8fa79d;
+    --accent: #5fd6b0;
+    --accent-strong: #7be3c4;
+    --danger: #e0605f;
+    --radius: 16px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Helvetica Neue", "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px 16px 48px;
+    user-select: none;
+    transition: background-color 0.4s;
+  }
+  body.phase-prepare { --accent: #e8c766; --accent-strong: #f0d888; }
+  body.phase-exercise { --accent: #ff8a4c; --accent-strong: #ffa670; }
+  body.phase-rest { --accent: #5fd6b0; --accent-strong: #7be3c4; }
+  body.finished { --accent: #8fd66f; --accent-strong: #a6e488; }
+  h1 { font-size: 26px; text-align: center; padding: 10px 0 2px; letter-spacing: 0.02em; font-weight: 800; }
+  h1 .brand-accent { color: var(--accent); }
+  .subtitle { text-align: center; color: var(--text-dim); font-size: 12px; margin-bottom: 16px; }
+  .card { background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 12px; color: var(--accent); margin-bottom: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+  /* --- Stepper --- */
+  .stepper-row { display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .stepBtn {
+    width: 48px; height: 48px; border-radius: 50%; border: none;
+    background: var(--card2); color: var(--accent); font-size: 24px; font-weight: bold; cursor: pointer;
+    flex-shrink: 0;
+  }
+  .stepBtn:active { background: var(--accent); color: var(--bg); }
+  .stepper-value { text-align: center; min-width: 96px; }
+  .stepper-value .num { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stepper-value .unit { font-size: 13px; color: var(--text-dim); margin-left: 3px; }
+  /* --- Toggles / slider --- */
+  .toggle-row, .volume-row {
+    display: flex; align-items: center; justify-content: space-between; padding: 8px 0; font-size: 14px; gap: 10px;
+  }
+  .toggle-switch {
+    width: 50px; height: 28px; border-radius: 14px; border: none; background: var(--card2);
+    position: relative; cursor: pointer; flex-shrink: 0;
+  }
+  .toggle-switch .knob {
+    position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--text-dim); transition: transform 0.18s, background-color 0.18s;
+  }
+  .toggle-switch.on .knob { transform: translateX(22px); background: var(--accent); }
+  input[type="range"] { flex: 1; margin-left: 14px; accent-color: var(--accent); min-width: 0; }
+  /* --- Summary / start --- */
+  .summary-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; color: var(--text-dim); }
+  .summary-row b { color: var(--text); font-size: 17px; font-variant-numeric: tabular-nums; }
+  .start-btn {
+    width: 100%; padding: 18px; border: none; border-radius: var(--radius);
+    background: var(--accent); color: var(--bg); font-size: 18px; font-weight: 700;
+    letter-spacing: 0.1em; cursor: pointer;
+  }
+  .start-btn:active { background: var(--accent-strong); }
+  /* --- Timer screen --- */
+  #timerScreen { display: none; }
+  body.running #setupScreen, body.finished #setupScreen { display: none; }
+  body.running, body.finished {
+    height: 100dvh; overflow: hidden;
+    display: flex; flex-direction: column;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+  body.running #timerScreen, body.finished #timerScreen {
+    display: flex; flex-direction: column; flex: 1; min-height: 0;
+  }
+  /* Main readout centered in the free space; controls pinned to the bottom */
+  .timer-main {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .finished-banner {
+    display: none; text-align: center; background: var(--accent); color: var(--bg); font-weight: 700;
+    border-radius: var(--radius); padding: 16px; margin-bottom: 14px; font-size: 16px;
+  }
+  body.finished .finished-banner { display: block; }
+  .phase-badge {
+    text-align: center; font-size: 15px; font-weight: 800; color: var(--accent);
+    letter-spacing: 0.18em; margin-top: 8px; text-transform: uppercase;
+  }
+  .round-label { text-align: center; color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+  .time-wrap { position: relative; overflow: hidden; border-radius: var(--radius); }
+  .ripple-layer {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    pointer-events: none; z-index: 0;
+  }
+  .ripple {
+    position: absolute; width: 120px; height: 120px; border-radius: 50%;
+    border: 2px solid var(--accent); opacity: 0;
+    animation: rippleExpand 1.3s ease-out forwards;
+  }
+  .ripple.soft { animation-duration: 2.6s; border-width: 1px; }
+  @keyframes rippleExpand {
+    0% { transform: scale(0.35); opacity: 0.5; }
+    100% { transform: scale(3.4); opacity: 0; }
+  }
+  .time-display {
+    position: relative; z-index: 1;
+    text-align: center; font-size: 92px; font-weight: 800; font-variant-numeric: tabular-nums;
+    color: var(--accent); letter-spacing: 0.02em; padding: 10px 0;
+  }
+  .time-display.beat { animation: beatPulse 0.2s ease-out; }
+  @keyframes beatPulse {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.035); }
+    100% { transform: scale(1); }
+  }
+  .progress-track { height: 10px; background: var(--card2); border-radius: 5px; overflow: hidden; margin: 0 0 10px; }
+  .progress-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 5px; transition: width 0.2s linear; }
+  .next-label { text-align: center; color: var(--text-dim); font-size: 13px; margin-bottom: 14px; }
+  .overall-track { height: 5px; background: var(--card2); border-radius: 3px; overflow: hidden; margin-bottom: 20px; }
+  .overall-fill { height: 100%; width: 0%; background: var(--accent-strong); border-radius: 3px; transition: width 0.2s linear; }
+  body.infinite .overall-track { display: none; }
+  .timer-btns { display: flex; gap: 8px; margin-top: auto; }
+  .timer-btns button {
+    flex: 1; padding: 15px 4px; border: none; border-radius: var(--radius);
+    font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
+  #pauseBtn { background: var(--card2); color: var(--text); }
+  #skipBtn { background: var(--card2); color: var(--text); }
+  #stopBtn { background: var(--danger); color: var(--bg); }
+  /* --- Progress & gamification --- */
+  .stats-row { display: flex; gap: 8px; }
+  .stat { flex: 1; background: var(--card2); border-radius: 12px; padding: 10px 4px; text-align: center; }
+  .stat .stat-num { font-size: 26px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .stat .stat-label { font-size: 10px; color: var(--text-dim); margin-top: 2px; letter-spacing: 0.04em; }
+  .encourage { margin-top: 12px; font-size: 13px; color: var(--text); text-align: center; line-height: 1.5; }
+  .praise {
+    display: none; text-align: center; font-size: 15px; font-weight: 600;
+    color: var(--text); margin: 0 0 8px; line-height: 1.5;
+  }
+  .finish-stats { display: none; text-align: center; font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+  body.finished .praise, body.finished .finish-stats { display: block; }
+  #fxCanvas {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 50; display: none;
+  }
+  /* --- iPhone SE (375x667) and smaller --- */
+  @media (max-width: 400px) {
+    body { padding: 12px 12px 36px; }
+    h1 { font-size: 22px; }
+    .card { padding: 13px 12px; margin-bottom: 11px; }
+    .stepBtn { width: 44px; height: 44px; font-size: 22px; }
+    .stepper-value .num { font-size: 30px; }
+    .time-display { font-size: 72px; }
+    .toggle-row, .volume-row { font-size: 13px; }
+    .timer-btns button { font-size: 13px; padding: 13px 2px; }
+  }
+  @media (max-height: 700px) {
+    .time-display { font-size: 64px; padding: 6px 0; }
+    .phase-badge { margin-top: 4px; }
+    .finished-banner { padding: 12px; margin-bottom: 10px; font-size: 15px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ Setup screen ============ -->
+<div id="setupScreen">
+  <h1>Interval<span class="brand-accent">Coach</span></h1>
+  <p class="subtitle">Voice-guided interval training with generated music</p>
+
+  <div class="card" id="progressCard" style="display:none">
+    <h2>Your Progress</h2>
+    <div class="stats-row">
+      <div class="stat"><div class="stat-num" id="statStreak">0</div><div class="stat-label">DAY STREAK 🔥</div></div>
+      <div class="stat"><div class="stat-num" id="statTotal">0</div><div class="stat-label">TOTAL 🏆</div></div>
+      <div class="stat"><div class="stat-num" id="statWeek">0</div><div class="stat-label">THIS WEEK 📅</div></div>
+    </div>
+    <p class="encourage" id="encourageMsg"></p>
+  </div>
+
+  <div class="card">
+    <h2>Warm-up</h2>
+    <div class="stepper-row">
+      <button class="stepBtn" id="prepMinus">−</button>
+      <div class="stepper-value"><span class="num" id="prepNum">60</span><span class="unit">sec</span></div>
+      <button class="stepBtn" id="prepPlus">＋</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Exercise</h2>
+    <div class="stepper-row">
+      <button class="stepBtn" id="exMinus">−</button>
+      <div class="stepper-value"><span class="num" id="exNum">60</span><span class="unit">sec</span></div>
+      <button class="stepBtn" id="exPlus">＋</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Rest</h2>
+    <div class="stepper-row">
+      <button class="stepBtn" id="restMinus">−</button>
+      <div class="stepper-value"><span class="num" id="restNum">60</span><span class="unit">sec</span></div>
+      <button class="stepBtn" id="restPlus">＋</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Rounds</h2>
+    <div class="stepper-row">
+      <button class="stepBtn" id="roundMinus">−</button>
+      <div class="stepper-value"><span class="num" id="roundNum">∞</span><span class="unit" id="roundUnit"></span></div>
+      <button class="stepBtn" id="roundPlus">＋</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Sound</h2>
+    <div class="toggle-row">
+      <span>Voice guide (start / countdown)</span>
+      <button class="toggle-switch on" id="voiceToggle"><span class="knob"></span></button>
+    </div>
+    <div class="toggle-row">
+      <span>Music (auto-switch per phase)</span>
+      <button class="toggle-switch on" id="musicToggle"><span class="knob"></span></button>
+    </div>
+    <div class="volume-row">
+      <span>Music volume</span>
+      <input type="range" id="volumeSlider" min="0" max="100" value="60">
+    </div>
+  </div>
+
+  <div class="card summary-card">
+    <div class="summary-row"><span>Total time</span><b id="totalTimeLabel">--:--</b></div>
+    <div class="summary-row"><span>Rounds</span><b id="totalRoundsLabel">-</b></div>
+  </div>
+
+  <button class="start-btn" id="startBtn">▶ START WORKOUT</button>
+</div>
+
+<!-- ============ Timer screen ============ -->
+<div id="timerScreen">
+  <div class="timer-main">
+    <div class="finished-banner">🎉 Workout complete — great job!</div>
+    <div class="praise" id="praiseMsg"></div>
+    <div class="finish-stats" id="finishStats"></div>
+    <div class="phase-badge" id="phaseLabel">Exercise</div>
+    <div class="round-label" id="roundLabel">Round 1 / 8</div>
+    <div class="time-wrap">
+      <div class="ripple-layer" id="rippleLayer"></div>
+      <div class="time-display" id="timeDisplay">1:00</div>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="phaseProgressFill"></div></div>
+    <div class="next-label" id="nextLabel">Next: Rest 1:00</div>
+    <div class="overall-track"><div class="overall-fill" id="overallProgressFill"></div></div>
+  </div>
+
+  <div class="timer-btns">
+    <button id="pauseBtn">⏸ Pause</button>
+    <button id="skipBtn">⏭ Skip</button>
+    <button id="stopBtn">■ Stop</button>
+  </div>
+</div>
+
+<canvas id="fxCanvas"></canvas>
+
+<script>
+"use strict";
+
+/* ============================================================
+   State & persistence
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+
+const state = {
+  prepareSec: 60,
+  exerciseSec: 60,
+  restSec: 60,
+  rounds: 0, // 0 = infinite (stop manually)
+  voiceEnabled: true,
+  musicEnabled: true,
+  musicVolume: 60,
+};
+
+const SETTINGS_KEY = "interval-coach-settings";
+
+function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    if (!saved) return;
+    if (Number.isInteger(saved.prepareSec)) state.prepareSec = clamp(saved.prepareSec, 0, 120);
+    if (Number.isInteger(saved.exerciseSec)) state.exerciseSec = clamp(saved.exerciseSec, 5, 600);
+    if (Number.isInteger(saved.restSec)) state.restSec = clamp(saved.restSec, 0, 600);
+    if (Number.isInteger(saved.rounds)) state.rounds = clamp(saved.rounds, 0, 50);
+    if (typeof saved.voiceEnabled === "boolean") state.voiceEnabled = saved.voiceEnabled;
+    if (typeof saved.musicEnabled === "boolean") state.musicEnabled = saved.musicEnabled;
+    if (Number.isInteger(saved.musicVolume)) state.musicVolume = clamp(saved.musicVolume, 0, 100);
+  } catch (_) { /* ignore corrupted settings and keep defaults */ }
+}
+
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state)); } catch (_) {}
+}
+
+function fmt(sec) {
+  const s = Math.max(0, Math.round(sec));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+const isInfinite = () => state.rounds === 0;
+
+/* ============================================================
+   Workout history & gamification
+   Each finished workout is logged with local date, rounds, seconds.
+   ============================================================ */
+const STATS_KEY = "interval-coach-stats";
+
+function localDateStr(dt) {
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+function loadStats() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STATS_KEY));
+    if (s && Array.isArray(s.log)) return s;
+  } catch (_) {}
+  return { log: [] };
+}
+
+function recordWorkout(rounds, seconds) {
+  const stats = loadStats();
+  stats.log.push({ d: localDateStr(new Date()), r: rounds, s: Math.round(seconds) });
+  if (stats.log.length > 500) stats.log = stats.log.slice(-500);
+  try { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); } catch (_) {}
+  return stats;
+}
+
+function computeMetrics(stats) {
+  const log = stats.log;
+  const daySet = new Set(log.map((e) => e.d));
+  const today = localDateStr(new Date());
+  // Streak counts back from today; if nothing yet today, be forgiving and start from yesterday
+  let streak = 0;
+  const cursor = new Date();
+  if (!daySet.has(localDateStr(cursor))) cursor.setDate(cursor.getDate() - 1);
+  while (daySet.has(localDateStr(cursor))) { streak++; cursor.setDate(cursor.getDate() - 1); }
+  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 6);
+  const weekAgoStr = localDateStr(weekAgo);
+  return {
+    total: log.length,
+    streak,
+    thisWeek: log.filter((e) => e.d >= weekAgoStr).length,
+    todayCount: log.filter((e) => e.d === today).length,
+    lastDay: log.length ? log[log.length - 1].d : null,
+    today,
+  };
+}
+
+const MILESTONES = [5, 10, 25, 50, 100, 200, 365];
+
+// Display text (EN) paired with spoken text (JA) — swap per locale when adding languages
+const PRAISE = {
+  first: { msg: "First workout complete — a great start! 🎉", speech: "記念すべき初ワークアウト、おめでとうございます！" },
+  milestone: (n) => ({ msg: `Workout #${n} — a real milestone! 🏆`, speech: `これで${n}回目のワークアウトです。素晴らしい！` }),
+  streak: (n) => ({ msg: `${n} days in a row — you're on fire! 🔥`, speech: `${n}日連続です。継続は力なり！` }),
+  today: (n) => ({ msg: `Session #${n} today — unstoppable! ⚡`, speech: `今日${n}回目のワークアウト、最高です！` }),
+  pool: [
+    { msg: "Great work — see you next time! 💪", speech: "よく頑張りました！" },
+    { msg: "Another one in the books! 📈", speech: "着実に積み重ねていますね！" },
+    { msg: "Strong finish! 🌟", speech: "ナイスファイトでした！" },
+  ],
+};
+
+function buildPraise(m) {
+  if (m.total === 1) return PRAISE.first;
+  if (MILESTONES.includes(m.total)) return PRAISE.milestone(m.total);
+  if (m.streak >= 2) return PRAISE.streak(m.streak);
+  if (m.todayCount >= 2) return PRAISE.today(m.todayCount);
+  return PRAISE.pool[Math.floor(Math.random() * PRAISE.pool.length)];
+}
+
+function daysBetween(d1, d2) {
+  return Math.round((new Date(d2) - new Date(d1)) / 86400000);
+}
+
+function updateProgressCard() {
+  const stats = loadStats();
+  const card = document.getElementById("progressCard");
+  if (!stats.log.length) { card.style.display = "none"; return; }
+  const m = computeMetrics(stats);
+  card.style.display = "";
+  document.getElementById("statStreak").textContent = m.streak;
+  document.getElementById("statTotal").textContent = m.total;
+  document.getElementById("statWeek").textContent = m.thisWeek;
+  let enc;
+  if (m.todayCount >= 1) enc = "Already trained today — extra credit time? 💪";
+  else if (m.streak >= 2) enc = `You're on a ${m.streak}-day streak. Keep the flame alive! 🔥`;
+  else if (m.lastDay && daysBetween(m.lastDay, m.today) === 1) enc = "You showed up yesterday. Make it two in a row!";
+  else enc = "Welcome back! Today is a great day to train.";
+  document.getElementById("encourageMsg").textContent = enc;
+}
+
+/* ============================================================
+   Phase sequence
+   Warm-up → (Exercise → Rest) × rounds, no rest after the last set.
+   Infinite mode (rounds = 0) extends the sequence on the fly.
+   ============================================================ */
+function buildSequence(s) {
+  const seq = [];
+  if (s.prepareSec > 0) seq.push({ type: "prepare", dur: s.prepareSec, round: 0 });
+  if (s.rounds === 0) {
+    seq.push({ type: "exercise", dur: s.exerciseSec, round: 1 });
+    return seq;
+  }
+  for (let r = 1; r <= s.rounds; r++) {
+    seq.push({ type: "exercise", dur: s.exerciseSec, round: r });
+    if (r < s.rounds && s.restSec > 0) seq.push({ type: "rest", dur: s.restSec, round: r });
+  }
+  return seq;
+}
+
+function appendNextPhase(seq) {
+  const last = seq[seq.length - 1];
+  if (last.type === "exercise" && state.restSec > 0) {
+    seq.push({ type: "rest", dur: state.restSec, round: last.round });
+  } else {
+    seq.push({ type: "exercise", dur: state.exerciseSec, round: last.round + 1 });
+  }
+}
+
+function computeTotalSeconds(s) {
+  if (s.rounds === 0) return null;
+  return buildSequence(s).reduce((a, p) => a + p.dur, 0);
+}
+
+/* ============================================================
+   Setup screen UI
+   ============================================================ */
+function renderSetup() {
+  $("prepNum").textContent = state.prepareSec;
+  $("exNum").textContent = state.exerciseSec;
+  $("restNum").textContent = state.restSec;
+  $("roundNum").textContent = isInfinite() ? "∞" : state.rounds;
+  $("roundUnit").textContent = isInfinite() ? "" : "sets";
+  $("voiceToggle").classList.toggle("on", state.voiceEnabled);
+  $("musicToggle").classList.toggle("on", state.musicEnabled);
+  $("volumeSlider").value = state.musicVolume;
+  const total = computeTotalSeconds(state);
+  $("totalTimeLabel").textContent = total == null ? "∞" : fmt(total);
+  $("totalRoundsLabel").textContent = isInfinite() ? "∞ (stop manually)" : state.rounds + " sets";
+  saveSettings();
+}
+
+function bindStepper(minusId, plusId, key, min, max, step) {
+  $(minusId).addEventListener("click", () => { state[key] = clamp(state[key] - step, min, max); renderSetup(); });
+  $(plusId).addEventListener("click", () => { state[key] = clamp(state[key] + step, min, max); renderSetup(); });
+}
+bindStepper("prepMinus", "prepPlus", "prepareSec", 0, 120, 5);
+bindStepper("exMinus", "exPlus", "exerciseSec", 5, 600, 5);
+bindStepper("restMinus", "restPlus", "restSec", 0, 600, 5);
+bindStepper("roundMinus", "roundPlus", "rounds", 0, 50, 1); // 0 = ∞
+
+function bindToggle(id, key) {
+  $(id).addEventListener("click", () => { state[key] = !state[key]; renderSetup(); });
+}
+bindToggle("voiceToggle", "voiceEnabled");
+bindToggle("musicToggle", "musicEnabled");
+
+$("volumeSlider").addEventListener("input", (e) => {
+  state.musicVolume = Number(e.target.value);
+  if (music) music.setVolume(state.musicVolume / 100);
+  saveSettings();
+});
+
+/* ============================================================
+   Voice guide (Web Speech API)
+   On iOS every browser uses WebKit, so the voice engine is the OS one.
+   ============================================================ */
+// Spoken phrases live here so adding languages later only touches this table
+const SPEECH = {
+  lang: "ja-JP",
+  prepare: "準備してください",
+  exercise: (round) => `第${round}ラウンド、スタート`,
+  rest: "休憩",
+  finish: "トレーニング終了です。お疲れさまでした",
+  count: (n) => String(n),
+};
+
+let voices = [];
+function loadVoices() { voices = ("speechSynthesis" in window) ? speechSynthesis.getVoices() : []; }
+if ("speechSynthesis" in window) {
+  loadVoices();
+  speechSynthesis.onvoiceschanged = loadVoices;
+}
+function pickVoice() {
+  const prefix = SPEECH.lang.slice(0, 2).toLowerCase();
+  return voices.find((v) => v.lang && v.lang.toLowerCase().startsWith(prefix)) || null;
+}
+
+// Chrome silently drops utterances that get garbage-collected before speaking,
+// so hold a reference until each one finishes
+const pendingUtterances = new Set();
+
+function speak(text) {
+  if (!state.voiceEnabled || !("speechSynthesis" in window)) return;
+  try {
+    if (music) music.duck(0.25);
+    speechSynthesis.resume();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = SPEECH.lang;
+    const v = pickVoice();
+    if (v) u.voice = v;
+    u.rate = 1.05;
+    pendingUtterances.add(u);
+    let done = false;
+    const unduckSafe = () => {
+      if (done) return;
+      done = true;
+      pendingUtterances.delete(u);
+      if (music) music.unduck();
+    };
+    // onend can fail to fire on iOS, so also release the duck on a timer
+    setTimeout(unduckSafe, Math.min(4000, 500 + text.length * 180));
+    u.onend = unduckSafe;
+    u.onerror = unduckSafe;
+    speechSynthesis.speak(u);
+  } catch (_) { if (music) music.unduck(); }
+}
+
+function announcePhase(phase) {
+  if (phase.type === "prepare") speak(SPEECH.prepare);
+  else if (phase.type === "exercise") speak(SPEECH.exercise(phase.round));
+  else if (phase.type === "rest") speak(SPEECH.rest);
+}
+
+// WebKit's speech synthesis can go dormant after silence; nudge it periodically
+let speechKeepAliveId = null;
+function startSpeechKeepAlive() {
+  if (speechKeepAliveId || !("speechSynthesis" in window)) return;
+  speechKeepAliveId = setInterval(() => {
+    try { if (!speechSynthesis.speaking) speechSynthesis.resume(); } catch (_) {}
+  }, 9000);
+}
+function stopSpeechKeepAlive() {
+  if (speechKeepAliveId) { clearInterval(speechKeepAliveId); speechKeepAliveId = null; }
+}
+
+/* ============================================================
+   Generated music (Web Audio API)
+   Exercise: cool, dark minor groove. Rest: ambient pad + chimes.
+   ============================================================ */
+function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+
+const MINOR_PENT = [0, 3, 5, 7, 10];
+const REST_SCALE = [0, 3, 5, 7, 10];
+const EXERCISE_CHORDS = [45, 43, 41, 43]; // A2 G2 F2 G2 — one bar (16 steps) each
+
+class MusicEngine {
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.master = ctx.createGain();
+    this.master.gain.value = 0;
+    this.master.connect(ctx.destination);
+    this.mode = null; // 'exercise' | 'rest' | null
+    this.paused = false;
+    this.duckGain = 1;
+    this.volume = 0.6;
+    this.schedulerId = null;
+    this.nextNoteTime = 0;
+    this.stepIndex = 0;
+    this.scheduleAheadTime = 0.15;
+    this.noiseBuffer = this._makeNoiseBuffer();
+    this.padNodes = null;
+    this.beatQueue = []; // scheduled beat times for the ripple animation
+  }
+
+  _pushBeat(time, kind) {
+    if (this.beatQueue.length < 64) this.beatQueue.push({ time, kind });
+  }
+
+  _makeNoiseBuffer() {
+    const len = this.ctx.sampleRate;
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  setVolume(v) { this.volume = v; this._applyGain(0.1); }
+
+  _setGainTarget(value, tc) { this.master.gain.setTargetAtTime(value, this.ctx.currentTime, tc); }
+
+  _applyGain(tc) {
+    if (this.paused) return;
+    const target = this.mode ? this.volume * this.duckGain : 0;
+    this._setGainTarget(target, tc);
+  }
+
+  duck(factor) { this.duckGain = factor; this._applyGain(0.05); }
+  unduck() { this.duckGain = 1; this._applyGain(0.2); }
+
+  setMode(mode) {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    this.stepIndex = 0;
+    this.beatQueue.length = 0;
+    if (mode === "rest") this._startPad(); else this._stopPad();
+
+    if (mode == null) {
+      if (this.schedulerId) { clearInterval(this.schedulerId); this.schedulerId = null; }
+      this._applyGain(0.6);
+      return;
+    }
+    if (!this.schedulerId && !this.paused) {
+      this.nextNoteTime = this.ctx.currentTime + 0.05;
+      this.schedulerId = setInterval(() => this._scheduler(), 30);
+    }
+    this._applyGain(0.3);
+  }
+
+  pause() {
+    this.paused = true;
+    if (this.schedulerId) { clearInterval(this.schedulerId); this.schedulerId = null; }
+    this._setGainTarget(0, 0.08);
+  }
+
+  resume() {
+    this.paused = false;
+    if (this.mode && !this.schedulerId) {
+      this.nextNoteTime = this.ctx.currentTime + 0.05;
+      this.schedulerId = setInterval(() => this._scheduler(), 30);
+    }
+    this._applyGain(0.25);
+  }
+
+  stopAll() {
+    this.setMode(null);
+    this._stopPad();
+  }
+
+  _scheduler() {
+    while (this.nextNoteTime < this.ctx.currentTime + this.scheduleAheadTime) {
+      if (this.mode === "exercise") this._scheduleExerciseStep(this.stepIndex, this.nextNoteTime);
+      else if (this.mode === "rest") this._scheduleRestStep(this.stepIndex, this.nextNoteTime);
+      this._advanceStep();
+    }
+  }
+
+  _advanceStep() {
+    const bpm = this.mode === "exercise" ? 118 : 60;
+    this.nextNoteTime += 60 / bpm / 4; // 16th-note grid
+    this.stepIndex++;
+  }
+
+  /* Cool exercise groove: four-on-the-floor kick, tight snare on 2 & 4,
+     off-beat hats, syncopated dark bass, sparse minor-pentatonic lead. */
+  _scheduleExerciseStep(step, time) {
+    const barStep = step % 16;
+    const bar = Math.floor(step / 16) % EXERCISE_CHORDS.length;
+    const rootMidi = EXERCISE_CHORDS[bar];
+    if (barStep === 0 || barStep === 4 || barStep === 8 || barStep === 12) {
+      this._kick(time);
+      this._pushBeat(time, "strong");
+    }
+    if (barStep === 4 || barStep === 12) this._snare(time);
+    if (barStep === 2 || barStep === 6 || barStep === 10 || barStep === 14) this._hat(time, 0.18);
+    if (barStep % 4 === 3 && Math.random() < 0.4) this._hat(time, 0.08);
+    if (barStep === 0) this._bass(time, rootMidi, 0.9, 0.4);
+    else if (barStep === 6) this._bass(time, rootMidi, 0.45, 0.2);
+    else if (barStep === 8) this._bass(time, rootMidi, 0.75, 0.3);
+    else if (barStep === 14) this._bass(time, rootMidi + 3, 0.5, 0.2);
+    if (barStep % 4 === 2 && Math.random() < 0.22) {
+      const iv = MINOR_PENT[Math.floor(Math.random() * MINOR_PENT.length)];
+      this._lead(time, rootMidi + 12 + iv);
+    }
+  }
+
+  _scheduleRestStep(step, time) {
+    const barStep = step % 16;
+    if (barStep % 4 === 0) this._pushBeat(time, "soft");
+    if (barStep === 0 && Math.random() < 0.5) {
+      const iv = REST_SCALE[Math.floor(Math.random() * REST_SCALE.length)];
+      this._chime(time, 57 + 24 + iv);
+    }
+  }
+
+  _kick(time) {
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(140, time);
+    osc.frequency.exponentialRampToValueAtTime(42, time + 0.12);
+    gain.gain.setValueAtTime(0.9, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+    osc.connect(gain).connect(this.master);
+    osc.start(time); osc.stop(time + 0.22);
+  }
+
+  _snare(time) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "bandpass"; filter.frequency.value = 1900; filter.Q.value = 0.9;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.4, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
+    src.connect(filter).connect(gain).connect(this.master);
+    src.start(time); src.stop(time + 0.14);
+  }
+
+  _hat(time, vol) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "highpass"; filter.frequency.value = 8000;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(vol, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+    src.connect(filter).connect(gain).connect(this.master);
+    src.start(time); src.stop(time + 0.05);
+  }
+
+  _bass(time, midi, vel, len) {
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.value = midiToFreq(midi);
+    filter.type = "lowpass"; filter.frequency.value = 380; filter.Q.value = 1.2;
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.exponentialRampToValueAtTime(0.5 * vel, time + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + len);
+    osc.connect(filter).connect(gain).connect(this.master);
+    osc.start(time); osc.stop(time + len + 0.05);
+  }
+
+  _lead(time, midi) {
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = midiToFreq(midi);
+    filter.type = "lowpass"; filter.frequency.value = 2200;
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.exponentialRampToValueAtTime(0.2, time + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.3);
+    osc.connect(filter).connect(gain).connect(this.master);
+    osc.start(time); osc.stop(time + 0.32);
+  }
+
+  _chime(time, midi) {
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = midiToFreq(midi);
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.exponentialRampToValueAtTime(0.18, time + 0.4);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 3.2);
+    osc.connect(gain).connect(this.master);
+    osc.start(time); osc.stop(time + 3.3);
+  }
+
+  _startPad() {
+    if (this.padNodes) return;
+    const root = 57; // A3
+    const chordIntervals = [0, 3, 7, 10]; // m7
+    const osc = []; const gains = [];
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "lowpass"; filter.frequency.value = 900;
+    const lfo = this.ctx.createOscillator();
+    const lfoGain = this.ctx.createGain();
+    lfo.frequency.value = 0.05; lfoGain.gain.value = 250;
+    lfo.connect(lfoGain).connect(filter.frequency);
+    lfo.start();
+    chordIntervals.forEach((iv, i) => {
+      const o = this.ctx.createOscillator();
+      o.type = i % 2 === 0 ? "sine" : "triangle";
+      o.frequency.value = midiToFreq(root + iv - 12);
+      o.detune.value = (Math.random() - 0.5) * 6;
+      const g = this.ctx.createGain();
+      g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.12, this.ctx.currentTime + 2);
+      o.connect(g).connect(filter);
+      o.start();
+      osc.push(o); gains.push(g);
+    });
+    filter.connect(this.master);
+    this.padNodes = { osc, gains, filter, lfo };
+  }
+
+  _stopPad() {
+    if (!this.padNodes) return;
+    const { osc, gains, lfo } = this.padNodes;
+    const now = this.ctx.currentTime;
+    gains.forEach((g) => { g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, 0.5); });
+    osc.forEach((o) => o.stop(now + 1.2));
+    lfo.stop(now + 1.2);
+    this.padNodes = null;
+  }
+}
+
+let audioCtx = null;
+let music = null;
+
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    music = new MusicEngine(audioCtx);
+    music.setVolume(state.musicVolume / 100);
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  if ("speechSynthesis" in window) {
+    try {
+      const u = new SpeechSynthesisUtterance(" ");
+      u.volume = 0; u.lang = SPEECH.lang;
+      speechSynthesis.speak(u);
+    } catch (_) {}
+  }
+}
+
+function applyMusicForPhase(type) {
+  if (!music) return;
+  if (!state.musicEnabled) { music.setMode(null); return; }
+  const mode = type === "exercise" ? "exercise" : type === "rest" ? "rest" : null;
+  music.setMode(mode);
+}
+
+/* ============================================================
+   Beat-synced ripple animation around the time display
+   ============================================================ */
+let beatRafId = null;
+
+function spawnRipple(kind) {
+  if (document.hidden) return;
+  const layer = $("rippleLayer");
+  if (layer.childElementCount > 10) return; // keep DOM small on slow devices
+  const el = document.createElement("span");
+  el.className = "ripple" + (kind === "soft" ? " soft" : "");
+  el.addEventListener("animationend", () => el.remove());
+  layer.appendChild(el);
+  if (kind === "strong") {
+    const td = $("timeDisplay");
+    td.classList.remove("beat");
+    void td.offsetWidth; // restart the pulse animation
+    td.classList.add("beat");
+  }
+}
+
+function beatLoop() {
+  if (!document.body.classList.contains("running")) { beatRafId = null; return; }
+  if (music && audioCtx && music.mode) {
+    const q = music.beatQueue;
+    while (q.length && q[0].time <= audioCtx.currentTime + 0.03) {
+      spawnRipple(q.shift().kind);
+    }
+  }
+  beatRafId = requestAnimationFrame(beatLoop);
+}
+
+function startBeatLoop() {
+  if (!beatRafId) beatRafId = requestAnimationFrame(beatLoop);
+}
+
+/* ============================================================
+   Finish celebration: canvas fireworks + applause & fanfare
+   ============================================================ */
+const FX_COLORS = ["#5fd6b0", "#ff8a4c", "#e8c766", "#8fd66f", "#7db8ff", "#ff7bb0"];
+let fxRafId = null;
+let fxParticles = [];
+let fxBurstTimers = [];
+
+function fireworkPop() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(300, t);
+  osc.frequency.exponentialRampToValueAtTime(60, t + 0.25);
+  g.gain.setValueAtTime(0.25, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.32);
+}
+
+function playCelebrationSound() {
+  if (!audioCtx || !music) return;
+  const out = audioCtx.createGain();
+  out.gain.value = 0.7;
+  out.connect(audioCtx.destination);
+  // applause: dozens of short filtered noise bursts scattered over ~3 seconds
+  for (let i = 0; i < 70; i++) {
+    const t = audioCtx.currentTime + 0.15 + Math.random() * 2.8;
+    const src = audioCtx.createBufferSource();
+    src.buffer = music.noiseBuffer;
+    const f = audioCtx.createBiquadFilter();
+    f.type = "bandpass"; f.frequency.value = 900 + Math.random() * 2600; f.Q.value = 1.5;
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.1 + Math.random() * 0.16, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    src.connect(f).connect(g).connect(out);
+    src.start(t, Math.random() * 0.9, 0.06);
+  }
+  // bright "ta-da" fanfare arpeggio (E major up)
+  [0, 4, 7, 12].forEach((iv, i) => {
+    const t = audioCtx.currentTime + 0.1 + i * 0.1;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = midiToFreq(76 + iv);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.2, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    osc.connect(g).connect(out);
+    osc.start(t); osc.stop(t + 0.65);
+  });
+}
+
+function spawnBurst(canvas) {
+  const w = canvas.width, h = canvas.height;
+  const cx = w * (0.15 + Math.random() * 0.7);
+  const cy = h * (0.12 + Math.random() * 0.45);
+  const color = FX_COLORS[Math.floor(Math.random() * FX_COLORS.length)];
+  const n = 36;
+  for (let i = 0; i < n; i++) {
+    const ang = (Math.PI * 2 * i) / n + Math.random() * 0.2;
+    const speed = (2 + Math.random() * 4) * (w / 500);
+    fxParticles.push({
+      x: cx, y: cy,
+      vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+      life: 1, decay: 0.012 + Math.random() * 0.012,
+      color, size: 2 + Math.random() * 2,
+    });
+  }
+  fireworkPop();
+}
+
+function startFireworks(durationMs = 4500) {
+  stopFireworks();
+  const canvas = $("fxCanvas");
+  canvas.style.display = "block";
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = canvas.clientWidth * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  const ctx = canvas.getContext("2d");
+  const endAt = performance.now() + durationMs;
+  spawnBurst(canvas);
+  for (let t = 350; t < durationMs - 800; t += 300 + Math.random() * 400) {
+    fxBurstTimers.push(setTimeout(() => spawnBurst(canvas), t));
+  }
+  const gravity = 0.03 * dpr;
+  const loop = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    fxParticles = fxParticles.filter((p) => p.life > 0);
+    for (const p of fxParticles) {
+      p.x += p.vx; p.y += p.vy; p.vy += gravity;
+      p.vx *= 0.985; p.vy *= 0.985;
+      p.life -= p.decay;
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * dpr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    if (performance.now() < endAt || fxParticles.length) {
+      fxRafId = requestAnimationFrame(loop);
+    } else {
+      stopFireworks();
+    }
+  };
+  fxRafId = requestAnimationFrame(loop);
+}
+
+function stopFireworks() {
+  if (fxRafId) { cancelAnimationFrame(fxRafId); fxRafId = null; }
+  fxBurstTimers.forEach(clearTimeout);
+  fxBurstTimers = [];
+  fxParticles = [];
+  const canvas = $("fxCanvas");
+  const ctx = canvas.getContext("2d");
+  if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  canvas.style.display = "none";
+}
+
+/* ============================================================
+   Wake Lock (keep the screen on while running)
+   ============================================================ */
+let wakeLock = null;
+async function requestWakeLock() {
+  try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
+}
+function releaseWakeLockFn() {
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (document.body.classList.contains("running")) requestWakeLock();
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+});
+
+/* ============================================================
+   Timer core
+   ============================================================ */
+let run = null; // { seq, idx, infinite, phaseStartMs, pausedAt, lastCountdownSec, totalDur, tickId }
+
+const PHASE_LABEL = { prepare: "Warm-up", exercise: "Exercise", rest: "Rest" };
+
+function setPhaseUIClass(type) {
+  document.body.classList.remove("phase-prepare", "phase-exercise", "phase-rest");
+  document.body.classList.add("phase-" + type);
+}
+
+function renderTimerStatic(phase) {
+  $("phaseLabel").textContent = PHASE_LABEL[phase.type];
+  $("roundLabel").textContent = phase.type === "prepare"
+    ? "Get ready"
+    : run.infinite ? `Round ${phase.round}` : `Round ${phase.round} / ${state.rounds}`;
+  const next = run.seq[run.idx + 1];
+  $("nextLabel").textContent = next ? `Next: ${PHASE_LABEL[next.type]} ${fmt(next.dur)}` : "Next: Finish";
+}
+
+function tick() {
+  if (!run || run.pausedAt !== null) return;
+  const phase = run.seq[run.idx];
+  const elapsed = (Date.now() - run.phaseStartMs) / 1000;
+  const remain = phase.dur - elapsed;
+  const remainCeil = Math.max(0, Math.ceil(remain));
+
+  $("timeDisplay").textContent = fmt(remainCeil);
+  $("phaseProgressFill").style.width = Math.min(100, (elapsed / phase.dur) * 100) + "%";
+
+  // Without generated music (disabled, or warm-up phase) pulse once per second instead
+  const musicSilent = !music || !state.musicEnabled || music.mode == null;
+  if (musicSilent && remainCeil !== run.lastPulseSec) {
+    run.lastPulseSec = remainCeil;
+    spawnRipple(phase.type === "exercise" ? "strong" : "soft");
+  }
+
+  if (!run.infinite) {
+    let priorDur = 0;
+    for (let i = 0; i < run.idx; i++) priorDur += run.seq[i].dur;
+    const overallElapsed = priorDur + Math.min(elapsed, phase.dur);
+    $("overallProgressFill").style.width = Math.min(100, (overallElapsed / run.totalDur) * 100) + "%";
+  }
+
+  if (remainCeil <= 3 && remainCeil >= 1 && remainCeil !== run.lastCountdownSec) {
+    run.lastCountdownSec = remainCeil;
+    speak(SPEECH.count(remainCeil));
+  }
+
+  if (remain <= 0) advancePhase();
+}
+
+function advancePhase() {
+  if (!run) return;
+  const prev = run.seq[run.idx];
+  if (prev) {
+    run.doneSeconds += prev.dur;
+    if (prev.type === "exercise") run.roundsDone++;
+  }
+  run.idx++;
+  if (run.infinite) {
+    // Keep one phase of lookahead so the "Next:" label always has data
+    while (run.seq.length <= run.idx + 1) appendNextPhase(run.seq);
+  } else if (run.idx >= run.seq.length) {
+    finishRun();
+    return;
+  }
+  run.phaseStartMs = Date.now();
+  run.lastCountdownSec = null;
+  const phase = run.seq[run.idx];
+  setPhaseUIClass(phase.type);
+  applyMusicForPhase(phase.type);
+  renderTimerStatic(phase);
+  announcePhase(phase);
+  tick();
+}
+
+function finishRun() {
+  clearInterval(run.tickId);
+  stopSpeechKeepAlive();
+  if (music) music.setMode(null);
+  const stats = recordWorkout(run.roundsDone, run.doneSeconds);
+  const m = computeMetrics(stats);
+  const praise = buildPraise(m);
+  $("praiseMsg").textContent = praise.msg;
+  $("finishStats").textContent = `🔥 ${m.streak}-day streak · 🏆 ${m.total} total · 📅 ${m.thisWeek} this week`;
+  speak(`${SPEECH.finish}。${praise.speech}`);
+  playCelebrationSound();
+  startFireworks();
+  document.body.classList.add("finished");
+  document.body.classList.remove("phase-prepare", "phase-exercise", "phase-rest");
+  releaseWakeLockFn();
+  $("pauseBtn").style.display = "none";
+  $("skipBtn").style.display = "none";
+  $("stopBtn").textContent = "🔁 Restart";
+  run = null;
+}
+
+$("startBtn").addEventListener("click", () => {
+  ensureAudio();
+  requestWakeLock();
+  const seq = buildSequence(state);
+  const infinite = isInfinite();
+  if (infinite) { while (seq.length < 2) appendNextPhase(seq); }
+  run = {
+    seq,
+    idx: 0,
+    infinite,
+    phaseStartMs: Date.now(),
+    pausedAt: null,
+    lastCountdownSec: null,
+    lastPulseSec: null,
+    roundsDone: 0,
+    doneSeconds: 0,
+    totalDur: infinite ? 0 : seq.reduce((a, p) => a + p.dur, 0),
+    tickId: setInterval(tick, 200),
+  };
+  document.body.classList.add("running");
+  document.body.classList.toggle("infinite", infinite);
+  document.body.classList.remove("finished");
+  setPhaseUIClass(seq[0].type);
+  applyMusicForPhase(seq[0].type);
+  renderTimerStatic(seq[0]);
+  announcePhase(seq[0]);
+  startSpeechKeepAlive();
+  startBeatLoop();
+  tick();
+});
+
+$("pauseBtn").addEventListener("click", () => {
+  if (!run) return;
+  if (run.pausedAt === null) {
+    run.pausedAt = Date.now();
+    if (music) music.pause();
+    $("pauseBtn").textContent = "▶ Resume";
+  } else {
+    run.phaseStartMs += Date.now() - run.pausedAt;
+    run.pausedAt = null;
+    if (music) music.resume();
+    $("pauseBtn").textContent = "⏸ Pause";
+  }
+});
+
+$("skipBtn").addEventListener("click", () => {
+  if (!run || run.pausedAt !== null) return;
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  advancePhase();
+});
+
+$("stopBtn").addEventListener("click", () => {
+  // In open-ended (∞) mode, stopping after completing at least one round IS
+  // finishing the workout — record it and celebrate instead of aborting
+  if (run && run.infinite && run.roundsDone >= 1) {
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+    finishRun();
+    return;
+  }
+  if (run) { clearInterval(run.tickId); run = null; }
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  stopSpeechKeepAlive();
+  stopFireworks();
+  if (music) music.stopAll();
+  releaseWakeLockFn();
+  document.body.classList.remove("running", "finished", "infinite", "phase-prepare", "phase-exercise", "phase-rest");
+  $("pauseBtn").style.display = "";
+  $("pauseBtn").textContent = "⏸ Pause";
+  $("skipBtn").style.display = "";
+  $("stopBtn").textContent = "■ Stop";
+  updateProgressCard();
+});
+
+loadSettings();
+renderSetup();
+updateProgressCard();
+
+/* ============================================================
+   PWA: register the service worker
+   ============================================================ */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
