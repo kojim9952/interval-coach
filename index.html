@@ -77,7 +77,11 @@
     width: 100%; padding: 18px; border: none; border-radius: var(--radius);
     background: var(--accent); color: var(--bg); font-size: 18px; font-weight: 700;
     letter-spacing: 0.1em; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
   }
+  .btn-ic { display: inline-flex; flex-shrink: 0; }
+  .btn-ic svg { width: 13px; height: 13px; display: block; fill: currentColor; }
+  .start-btn .btn-ic svg { width: 15px; height: 15px; }
   .start-btn:active { background: var(--accent-strong); }
   /* --- Timer screen --- */
   #timerScreen { display: none; }
@@ -141,6 +145,7 @@
   .timer-btns button {
     flex: 1; padding: 15px 4px; border: none; border-radius: var(--radius);
     font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
   }
   #pauseBtn { background: var(--card2); color: var(--text); }
   #skipBtn { background: var(--card2); color: var(--text); }
@@ -149,7 +154,11 @@
   .stats-row { display: flex; gap: 8px; }
   .stat { flex: 1; background: var(--card2); border-radius: 12px; padding: 10px 4px; text-align: center; }
   .stat .stat-num { font-size: 26px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
-  .stat .stat-label { font-size: 10px; color: var(--text-dim); margin-top: 2px; letter-spacing: 0.04em; }
+  .stat .stat-label {
+    font-size: 10px; color: var(--text-dim); margin-top: 2px; letter-spacing: 0.04em;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+  }
+  .stat .stat-label svg { width: 11px; height: 11px; flex-shrink: 0; }
   .encourage { margin-top: 12px; font-size: 13px; color: var(--text); text-align: center; line-height: 1.5; }
   .praise {
     display: none; text-align: center; font-size: 15px; font-weight: 600;
@@ -189,9 +198,9 @@
   <div class="card" id="progressCard" style="display:none">
     <h2>Your Progress</h2>
     <div class="stats-row">
-      <div class="stat"><div class="stat-num" id="statStreak">0</div><div class="stat-label">DAY STREAK 🔥</div></div>
-      <div class="stat"><div class="stat-num" id="statTotal">0</div><div class="stat-label">TOTAL 🏆</div></div>
-      <div class="stat"><div class="stat-num" id="statWeek">0</div><div class="stat-label">THIS WEEK 📅</div></div>
+      <div class="stat"><div class="stat-num" id="statStreak">0</div><div class="stat-label"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1C5.2 4.6 4 6.4 4 9a4 4 0 0 0 8 0c0-2.6-1.2-4.4-4-8zm0 11.5A2.5 2.5 0 0 1 5.5 10c0-1.2.7-2.2 2.5-4 1.8 1.8 2.5 2.8 2.5 4A2.5 2.5 0 0 1 8 12.5z"/></svg>DAY STREAK</div></div>
+      <div class="stat"><div class="stat-num" id="statTotal">0</div><div class="stat-label"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 1h8v1.5H15V5a3 3 0 0 1-3 3h-.35A4 4 0 0 1 9 9.87V12h2.5v2h-7v-2H7V9.87A4 4 0 0 1 4.35 8H4a3 3 0 0 1-3-3V2.5h3V1zm-1.5 3V5A1.5 1.5 0 0 0 4 6.5V4H2.5zm11 0H12v2.5A1.5 1.5 0 0 0 13.5 5V4z"/></svg>TOTAL</div></div>
+      <div class="stat"><div class="stat-num" id="statWeek">0</div><div class="stat-label"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3.5" width="12" height="10.5" rx="1.5"/><path d="M2 6.75h12M5.25 1.5v3M10.75 1.5v3"/></svg>THIS WEEK</div></div>
     </div>
     <p class="encourage" id="encourageMsg"></p>
   </div>
@@ -253,13 +262,13 @@
     <div class="summary-row"><span>Rounds</span><b id="totalRoundsLabel">-</b></div>
   </div>
 
-  <button class="start-btn" id="startBtn">▶ START WORKOUT</button>
+  <button class="start-btn" id="startBtn">START WORKOUT</button>
 </div>
 
 <!-- ============ Timer screen ============ -->
 <div id="timerScreen">
   <div class="timer-main">
-    <div class="finished-banner">🎉 Workout complete — great job!</div>
+    <div class="finished-banner">Workout complete — great job!</div>
     <div class="praise" id="praiseMsg"></div>
     <div class="finish-stats" id="finishStats"></div>
     <div class="phase-badge" id="phaseLabel">Exercise</div>
@@ -274,9 +283,9 @@
   </div>
 
   <div class="timer-btns">
-    <button id="pauseBtn">⏸ Pause</button>
-    <button id="skipBtn">⏭ Skip</button>
-    <button id="stopBtn">■ Stop</button>
+    <button id="pauseBtn">Pause</button>
+    <button id="skipBtn">Skip</button>
+    <button id="stopBtn">Stop</button>
   </div>
 </div>
 
@@ -382,14 +391,14 @@ const MILESTONES = [5, 10, 25, 50, 100, 200, 365];
 
 // Display text (EN) paired with spoken text (JA) — swap per locale when adding languages
 const PRAISE = {
-  first: { msg: "First workout complete — a great start! 🎉", speech: "記念すべき初ワークアウト、おめでとうございます！" },
-  milestone: (n) => ({ msg: `Workout #${n} — a real milestone! 🏆`, speech: `これで${n}回目のワークアウトです。素晴らしい！` }),
-  streak: (n) => ({ msg: `${n} days in a row — you're on fire! 🔥`, speech: `${n}日連続です。継続は力なり！` }),
-  today: (n) => ({ msg: `Session #${n} today — unstoppable! ⚡`, speech: `今日${n}回目のワークアウト、最高です！` }),
+  first: { msg: "First workout complete — a great start!", speech: "記念すべき初ワークアウト、おめでとうございます！" },
+  milestone: (n) => ({ msg: `Workout #${n} — a real milestone!`, speech: `これで${n}回目のワークアウトです。素晴らしい！` }),
+  streak: (n) => ({ msg: `${n} days in a row — you're on fire!`, speech: `${n}日連続です。継続は力なり！` }),
+  today: (n) => ({ msg: `Session #${n} today — unstoppable!`, speech: `今日${n}回目のワークアウト、最高です！` }),
   pool: [
-    { msg: "Great work — see you next time! 💪", speech: "よく頑張りました！" },
-    { msg: "Another one in the books! 📈", speech: "着実に積み重ねていますね！" },
-    { msg: "Strong finish! 🌟", speech: "ナイスファイトでした！" },
+    { msg: "Great work — see you next time!", speech: "よく頑張りました！" },
+    { msg: "Another one in the books!", speech: "着実に積み重ねていますね！" },
+    { msg: "Strong finish!", speech: "ナイスファイトでした！" },
   ],
 };
 
@@ -415,8 +424,8 @@ function updateProgressCard() {
   document.getElementById("statTotal").textContent = m.total;
   document.getElementById("statWeek").textContent = m.thisWeek;
   let enc;
-  if (m.todayCount >= 1) enc = "Already trained today — extra credit time? 💪";
-  else if (m.streak >= 2) enc = `You're on a ${m.streak}-day streak. Keep the flame alive! 🔥`;
+  if (m.todayCount >= 1) enc = "Already trained today — extra credit time?";
+  else if (m.streak >= 2) enc = `You're on a ${m.streak}-day streak. Keep the flame alive!`;
   else if (m.lastDay && daysBetween(m.lastDay, m.today) === 1) enc = "You showed up yesterday. Make it two in a row!";
   else enc = "Welcome back! Today is a great day to train.";
   document.getElementById("encourageMsg").textContent = enc;
@@ -453,6 +462,26 @@ function appendNextPhase(seq) {
 function computeTotalSeconds(s) {
   if (s.rounds === 0) return null;
   return buildSequence(s).reduce((a, p) => a + p.dur, 0);
+}
+
+/* ============================================================
+   Button icons (inline SVG — emoji render inconsistently across platforms)
+   ============================================================ */
+const ICONS = {
+  play: '<svg viewBox="0 0 16 16"><path d="M4 2.2a.8.8 0 0 1 1.22-.68l9 5.8a.8.8 0 0 1 0 1.36l-9 5.8A.8.8 0 0 1 4 13.8V2.2z"/></svg>',
+  pause: '<svg viewBox="0 0 16 16"><rect x="3" y="2" width="3.6" height="12" rx="1"/><rect x="9.4" y="2" width="3.6" height="12" rx="1"/></svg>',
+  skip: '<svg viewBox="0 0 16 16"><path d="M2.5 2.6a.8.8 0 0 1 1.23-.67l7.27 4.73a.8.8 0 0 1 0 1.35l-7.27 4.73a.8.8 0 0 1-1.23-.67V2.6z"/><rect x="11.8" y="2" width="2.2" height="12" rx="1"/></svg>',
+  stop: '<svg viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="1.6"/></svg>',
+  restart: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M13.5 8a5.5 5.5 0 1 1-2-4.24"/><path d="M11.5 1.2v3h3" stroke-width="1.6"/></svg>',
+};
+function btnHTML(icon, label) {
+  return `<span class="btn-ic">${ICONS[icon]}</span>${label}`;
+}
+function initButtonIcons() {
+  $("startBtn").innerHTML = btnHTML("play", "START WORKOUT");
+  $("pauseBtn").innerHTML = btnHTML("pause", "Pause");
+  $("skipBtn").innerHTML = btnHTML("skip", "Skip");
+  $("stopBtn").innerHTML = btnHTML("stop", "Stop");
 }
 
 /* ============================================================
@@ -585,6 +614,7 @@ class MusicEngine {
     this.master.connect(ctx.destination);
     this.mode = null; // 'exercise' | 'rest' | null
     this.paused = false;
+    this.fading = false;
     this.duckGain = 1;
     this.volume = 0.6;
     this.schedulerId = null;
@@ -613,7 +643,7 @@ class MusicEngine {
   _setGainTarget(value, tc) { this.master.gain.setTargetAtTime(value, this.ctx.currentTime, tc); }
 
   _applyGain(tc) {
-    if (this.paused) return;
+    if (this.paused || this.fading) return;
     const target = this.mode ? this.volume * this.duckGain : 0;
     this._setGainTarget(target, tc);
   }
@@ -621,9 +651,21 @@ class MusicEngine {
   duck(factor) { this.duckGain = factor; this._applyGain(0.05); }
   unduck() { this.duckGain = 1; this._applyGain(0.2); }
 
+  // Gentle fade toward silence over the closing seconds of a phase;
+  // the next setMode() restores the volume for the following track
+  fadeOut(sec = 4) {
+    if (!this.mode || this.paused) return;
+    this.fading = true;
+    this._setGainTarget(0, sec / 3);
+  }
+
   setMode(mode) {
-    if (mode === this.mode) return;
+    if (mode === this.mode) {
+      if (this.fading) { this.fading = false; this._applyGain(0.3); }
+      return;
+    }
     this.mode = mode;
+    this.fading = false;
     this.stepIndex = 0;
     this.beatQueue.length = 0;
     if (mode === "rest") this._startPad(); else this._stopPad();
@@ -1066,7 +1108,12 @@ function tick() {
     $("overallProgressFill").style.width = Math.min(100, (overallElapsed / run.totalDur) * 100) + "%";
   }
 
-  if (remainCeil <= 3 && remainCeil >= 1 && remainCeil !== run.lastCountdownSec) {
+  // Closing seconds: music fades toward silence while the voice counts down
+  if (remain <= 5.3 && !run.fadedOut) {
+    run.fadedOut = true;
+    if (music) music.fadeOut();
+  }
+  if (remainCeil <= 5 && remainCeil >= 1 && remainCeil !== run.lastCountdownSec) {
     run.lastCountdownSec = remainCeil;
     speak(SPEECH.count(remainCeil));
   }
@@ -1091,6 +1138,7 @@ function advancePhase() {
   }
   run.phaseStartMs = Date.now();
   run.lastCountdownSec = null;
+  run.fadedOut = false;
   const phase = run.seq[run.idx];
   setPhaseUIClass(phase.type);
   applyMusicForPhase(phase.type);
@@ -1107,7 +1155,7 @@ function finishRun() {
   const m = computeMetrics(stats);
   const praise = buildPraise(m);
   $("praiseMsg").textContent = praise.msg;
-  $("finishStats").textContent = `🔥 ${m.streak}-day streak · 🏆 ${m.total} total · 📅 ${m.thisWeek} this week`;
+  $("finishStats").textContent = `${m.streak}-day streak · ${m.total} total · ${m.thisWeek} this week`;
   speak(`${SPEECH.finish}。${praise.speech}`);
   playCelebrationSound();
   startFireworks();
@@ -1116,7 +1164,7 @@ function finishRun() {
   releaseWakeLockFn();
   $("pauseBtn").style.display = "none";
   $("skipBtn").style.display = "none";
-  $("stopBtn").textContent = "🔁 Restart";
+  $("stopBtn").innerHTML = btnHTML("restart", "Restart");
   run = null;
 }
 
@@ -1134,6 +1182,7 @@ $("startBtn").addEventListener("click", () => {
     pausedAt: null,
     lastCountdownSec: null,
     lastPulseSec: null,
+    fadedOut: false,
     roundsDone: 0,
     doneSeconds: 0,
     totalDur: infinite ? 0 : seq.reduce((a, p) => a + p.dur, 0),
@@ -1142,6 +1191,7 @@ $("startBtn").addEventListener("click", () => {
   document.body.classList.add("running");
   document.body.classList.toggle("infinite", infinite);
   document.body.classList.remove("finished");
+  $("pauseBtn").innerHTML = btnHTML("pause", "Pause");
   setPhaseUIClass(seq[0].type);
   applyMusicForPhase(seq[0].type);
   renderTimerStatic(seq[0]);
@@ -1156,12 +1206,12 @@ $("pauseBtn").addEventListener("click", () => {
   if (run.pausedAt === null) {
     run.pausedAt = Date.now();
     if (music) music.pause();
-    $("pauseBtn").textContent = "▶ Resume";
+    $("pauseBtn").innerHTML = btnHTML("play", "Resume");
   } else {
     run.phaseStartMs += Date.now() - run.pausedAt;
     run.pausedAt = null;
     if (music) music.resume();
-    $("pauseBtn").textContent = "⏸ Pause";
+    $("pauseBtn").innerHTML = btnHTML("pause", "Pause");
   }
 });
 
@@ -1187,15 +1237,16 @@ $("stopBtn").addEventListener("click", () => {
   releaseWakeLockFn();
   document.body.classList.remove("running", "finished", "infinite", "phase-prepare", "phase-exercise", "phase-rest");
   $("pauseBtn").style.display = "";
-  $("pauseBtn").textContent = "⏸ Pause";
+  $("pauseBtn").innerHTML = btnHTML("pause", "Pause");
   $("skipBtn").style.display = "";
-  $("stopBtn").textContent = "■ Stop";
+  $("stopBtn").innerHTML = btnHTML("stop", "Stop");
   updateProgressCard();
 });
 
 loadSettings();
 renderSetup();
 updateProgressCard();
+initButtonIcons();
 
 /* ============================================================
    PWA: register the service worker
