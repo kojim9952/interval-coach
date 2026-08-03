@@ -167,6 +167,7 @@
   }
   .stat .stat-label svg { width: 11px; height: 11px; flex-shrink: 0; }
   .encourage { margin-top: 12px; font-size: 13px; color: var(--text); text-align: center; line-height: 1.5; }
+  .version-note { text-align: center; font-size: 10px; color: var(--text-dim); opacity: 0.5; margin-top: 12px; }
   .praise {
     display: none; text-align: center; font-size: 15px; font-weight: 600;
     color: var(--text); margin: 0 0 8px; line-height: 1.5;
@@ -276,6 +277,7 @@
   </div>
 
   <button class="start-btn" id="startBtn">START WORKOUT</button>
+  <p class="version-note">v<span id="appVersion">4</span></p>
 </div>
 
 <!-- ============ Timer screen ============ -->
@@ -1299,11 +1301,31 @@ updateProgressCard();
 initButtonIcons();
 
 /* ============================================================
-   PWA: register the service worker
+   PWA: register the service worker + self-updating flow.
+   iOS resumes a home-screen PWA without any navigation, so we
+   check for updates explicitly every time the app becomes visible
+   and reload once the new worker takes control.
    ============================================================ */
 if ("serviceWorker" in navigator) {
+  let refreshing = false;
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    // Only a *replacement* worker means new code; the first-ever one is not an update
+    if (!hadController || refreshing) return;
+    if (document.body.classList.contains("running")) return; // never mid-workout
+    refreshing = true;
+    location.reload();
+  });
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
+      .then((reg) => {
+        const check = () => reg.update().catch(() => {});
+        check();
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") check();
+        });
+      })
+      .catch(() => {});
   });
 }
 </script>
