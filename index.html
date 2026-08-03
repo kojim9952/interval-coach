@@ -70,6 +70,13 @@
   }
   .toggle-switch.on .knob { transform: translateX(22px); background: var(--accent); }
   input[type="range"] { flex: 1; margin-left: 14px; accent-color: var(--accent); min-width: 0; }
+  .mini-stepper { display: flex; align-items: center; gap: 10px; }
+  .mini-stepper button {
+    width: 34px; height: 34px; border-radius: 50%; border: none;
+    background: var(--card2); color: var(--accent); font-size: 18px; font-weight: bold; cursor: pointer;
+  }
+  .mini-stepper button:active { background: var(--accent); color: var(--bg); }
+  .mini-stepper .num { min-width: 24px; text-align: center; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
   /* --- Summary / start --- */
   .summary-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; color: var(--text-dim); }
   .summary-row b { color: var(--text); font-size: 17px; font-variant-numeric: tabular-nums; }
@@ -247,6 +254,12 @@
       <span>Voice guide (start / countdown)</span>
       <button class="toggle-switch on" id="voiceToggle"><span class="knob"></span></button>
     </div>
+    <div class="volume-row">
+      <span>Countdown (sec)</span>
+      <div class="mini-stepper">
+        <button id="cdMinus">−</button><span class="num" id="cdNum">5</span><button id="cdPlus">＋</button>
+      </div>
+    </div>
     <div class="toggle-row">
       <span>Music (auto-switch per phase)</span>
       <button class="toggle-switch on" id="musicToggle"><span class="knob"></span></button>
@@ -304,6 +317,7 @@ const state = {
   exerciseSec: 60,
   restSec: 60,
   rounds: 0, // 0 = infinite (stop manually)
+  countdownSec: 5,
   voiceEnabled: true,
   musicEnabled: true,
   musicVolume: 60,
@@ -321,6 +335,7 @@ function loadSettings() {
     if (Number.isInteger(saved.exerciseSec)) state.exerciseSec = clamp(saved.exerciseSec, 5, 600);
     if (Number.isInteger(saved.restSec)) state.restSec = clamp(saved.restSec, 0, 600);
     if (Number.isInteger(saved.rounds)) state.rounds = clamp(saved.rounds, 0, 50);
+    if (Number.isInteger(saved.countdownSec)) state.countdownSec = clamp(saved.countdownSec, 1, 10);
     if (typeof saved.voiceEnabled === "boolean") state.voiceEnabled = saved.voiceEnabled;
     if (typeof saved.musicEnabled === "boolean") state.musicEnabled = saved.musicEnabled;
     if (Number.isInteger(saved.musicVolume)) state.musicVolume = clamp(saved.musicVolume, 0, 100);
@@ -493,6 +508,7 @@ function renderSetup() {
   $("restNum").textContent = state.restSec;
   $("roundNum").textContent = isInfinite() ? "∞" : state.rounds;
   $("roundUnit").textContent = isInfinite() ? "" : "sets";
+  $("cdNum").textContent = state.countdownSec;
   $("voiceToggle").classList.toggle("on", state.voiceEnabled);
   $("musicToggle").classList.toggle("on", state.musicEnabled);
   $("volumeSlider").value = state.musicVolume;
@@ -510,6 +526,7 @@ bindStepper("prepMinus", "prepPlus", "prepareSec", 0, 120, 5);
 bindStepper("exMinus", "exPlus", "exerciseSec", 5, 600, 5);
 bindStepper("restMinus", "restPlus", "restSec", 0, 600, 5);
 bindStepper("roundMinus", "roundPlus", "rounds", 0, 50, 1); // 0 = ∞
+bindStepper("cdMinus", "cdPlus", "countdownSec", 1, 10, 1);
 
 function bindToggle(id, key) {
   $(id).addEventListener("click", () => { state[key] = !state[key]; renderSetup(); });
@@ -611,7 +628,15 @@ class MusicEngine {
     this.ctx = ctx;
     this.master = ctx.createGain();
     this.master.gain.value = 0;
-    this.master.connect(ctx.destination);
+    // Compressor as the final bus keeps peaks from clipping small phone speakers
+    this.comp = ctx.createDynamicsCompressor();
+    this.comp.threshold.value = -16;
+    this.comp.knee.value = 18;
+    this.comp.ratio.value = 8;
+    this.comp.attack.value = 0.003;
+    this.comp.release.value = 0.25;
+    this.master.connect(this.comp);
+    this.comp.connect(ctx.destination);
     this.mode = null; // 'exercise' | 'rest' | null
     this.paused = false;
     this.fading = false;
@@ -754,7 +779,7 @@ class MusicEngine {
     osc.type = "sine";
     osc.frequency.setValueAtTime(140, time);
     osc.frequency.exponentialRampToValueAtTime(42, time + 0.12);
-    gain.gain.setValueAtTime(0.9, time);
+    gain.gain.setValueAtTime(0.55, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
     osc.connect(gain).connect(this.master);
     osc.start(time); osc.stop(time + 0.22);
@@ -766,7 +791,7 @@ class MusicEngine {
     const filter = this.ctx.createBiquadFilter();
     filter.type = "bandpass"; filter.frequency.value = 1900; filter.Q.value = 0.9;
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.4, time);
+    gain.gain.setValueAtTime(0.28, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
     src.connect(filter).connect(gain).connect(this.master);
     src.start(time); src.stop(time + 0.14);
@@ -792,7 +817,7 @@ class MusicEngine {
     osc.frequency.value = midiToFreq(midi);
     filter.type = "lowpass"; filter.frequency.value = 380; filter.Q.value = 1.2;
     gain.gain.setValueAtTime(0.0001, time);
-    gain.gain.exponentialRampToValueAtTime(0.5 * vel, time + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.35 * vel, time + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.001, time + len);
     osc.connect(filter).connect(gain).connect(this.master);
     osc.start(time); osc.stop(time + len + 0.05);
@@ -806,7 +831,7 @@ class MusicEngine {
     osc.frequency.value = midiToFreq(midi);
     filter.type = "lowpass"; filter.frequency.value = 2200;
     gain.gain.setValueAtTime(0.0001, time);
-    gain.gain.exponentialRampToValueAtTime(0.2, time + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.15, time + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.3);
     osc.connect(filter).connect(gain).connect(this.master);
     osc.start(time); osc.stop(time + 0.32);
@@ -843,7 +868,7 @@ class MusicEngine {
       o.detune.value = (Math.random() - 0.5) * 6;
       const g = this.ctx.createGain();
       g.gain.value = 0;
-      g.gain.linearRampToValueAtTime(0.12, this.ctx.currentTime + 2);
+      g.gain.linearRampToValueAtTime(0.1, this.ctx.currentTime + 2);
       o.connect(g).connect(filter);
       o.start();
       osc.push(o); gains.push(g);
@@ -866,13 +891,24 @@ class MusicEngine {
 let audioCtx = null;
 let music = null;
 
+function resumeAudioIfNeeded() {
+  if (audioCtx && audioCtx.state !== "running") {
+    audioCtx.resume().catch(() => {});
+  }
+}
+// A real user gesture is the most reliable way to revive a blocked context
+document.addEventListener("pointerdown", resumeAudioIfNeeded, { passive: true });
+
 function ensureAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     music = new MusicEngine(audioCtx);
     music.setVolume(state.musicVolume / 100);
+    // iOS flips the context to "interrupted" (not just "suspended") after
+    // calls, Siri, screen lock, etc. — try to recover whenever it changes
+    audioCtx.onstatechange = () => resumeAudioIfNeeded();
   }
-  if (audioCtx.state === "suspended") audioCtx.resume();
+  resumeAudioIfNeeded();
   if ("speechSynthesis" in window) {
     try {
       const u = new SpeechSynthesisUtterance(" ");
@@ -933,6 +969,11 @@ let fxRafId = null;
 let fxParticles = [];
 let fxBurstTimers = [];
 
+function sfxBus() {
+  // Route one-shot effects through the music compressor to avoid clipping
+  return music ? music.comp : audioCtx.destination;
+}
+
 function fireworkPop() {
   if (!audioCtx) return;
   const t = audioCtx.currentTime;
@@ -941,17 +982,17 @@ function fireworkPop() {
   osc.type = "sine";
   osc.frequency.setValueAtTime(300, t);
   osc.frequency.exponentialRampToValueAtTime(60, t + 0.25);
-  g.gain.setValueAtTime(0.25, t);
+  g.gain.setValueAtTime(0.18, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
-  osc.connect(g).connect(audioCtx.destination);
+  osc.connect(g).connect(sfxBus());
   osc.start(t); osc.stop(t + 0.32);
 }
 
 function playCelebrationSound() {
   if (!audioCtx || !music) return;
   const out = audioCtx.createGain();
-  out.gain.value = 0.7;
-  out.connect(audioCtx.destination);
+  out.gain.value = 0.45;
+  out.connect(sfxBus());
   // applause: dozens of short filtered noise bursts scattered over ~3 seconds
   for (let i = 0; i < 70; i++) {
     const t = audioCtx.currentTime + 0.15 + Math.random() * 2.8;
@@ -960,7 +1001,7 @@ function playCelebrationSound() {
     const f = audioCtx.createBiquadFilter();
     f.type = "bandpass"; f.frequency.value = 900 + Math.random() * 2600; f.Q.value = 1.5;
     const g = audioCtx.createGain();
-    g.gain.setValueAtTime(0.1 + Math.random() * 0.16, t);
+    g.gain.setValueAtTime(0.07 + Math.random() * 0.12, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
     src.connect(f).connect(g).connect(out);
     src.start(t, Math.random() * 0.9, 0.06);
@@ -973,7 +1014,7 @@ function playCelebrationSound() {
     osc.type = "triangle";
     osc.frequency.value = midiToFreq(76 + iv);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.2, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
     osc.connect(g).connect(out);
     osc.start(t); osc.stop(t + 0.65);
@@ -1060,7 +1101,7 @@ function releaseWakeLockFn() {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
   if (document.body.classList.contains("running")) requestWakeLock();
-  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  resumeAudioIfNeeded();
 });
 
 /* ============================================================
@@ -1084,8 +1125,15 @@ function renderTimerStatic(phase) {
   $("nextLabel").textContent = next ? `Next: ${PHASE_LABEL[next.type]} ${fmt(next.dur)}` : "Next: Finish";
 }
 
+let lastResumeTry = 0;
+
 function tick() {
   if (!run || run.pausedAt !== null) return;
+  // Self-heal: notifications etc. can interrupt the audio context mid-workout
+  if (audioCtx && audioCtx.state !== "running" && Date.now() - lastResumeTry > 2000) {
+    lastResumeTry = Date.now();
+    resumeAudioIfNeeded();
+  }
   const phase = run.seq[run.idx];
   const elapsed = (Date.now() - run.phaseStartMs) / 1000;
   const remain = phase.dur - elapsed;
@@ -1108,12 +1156,14 @@ function tick() {
     $("overallProgressFill").style.width = Math.min(100, (overallElapsed / run.totalDur) * 100) + "%";
   }
 
-  // Closing seconds: music fades toward silence while the voice counts down
-  if (remain <= 5.3 && !run.fadedOut) {
+  // Closing seconds: music fades toward silence while the voice counts down.
+  // Cap the countdown so it doesn't swallow short phases entirely.
+  const cd = Math.min(state.countdownSec, Math.max(1, phase.dur - 3));
+  if (remain <= cd + 0.3 && !run.fadedOut) {
     run.fadedOut = true;
-    if (music) music.fadeOut();
+    if (music) music.fadeOut(Math.max(2, cd * 0.8));
   }
-  if (remainCeil <= 5 && remainCeil >= 1 && remainCeil !== run.lastCountdownSec) {
+  if (remainCeil <= cd && remainCeil >= 1 && remainCeil !== run.lastCountdownSec) {
     run.lastCountdownSec = remainCeil;
     speak(SPEECH.count(remainCeil));
   }
