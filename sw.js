@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE = "interval-coach-v4";
+const CACHE = "interval-coach-v5";
 const ASSETS = [
   "./",
   "./index.html",

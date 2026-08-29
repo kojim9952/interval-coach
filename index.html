@@ -77,6 +77,15 @@
   }
   .mini-stepper button:active { background: var(--accent); color: var(--bg); }
   .mini-stepper .num { min-width: 24px; text-align: center; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  /* --- Style chips --- */
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 2px; }
+  .chip {
+    padding: 8px 13px; border-radius: 999px; border: 1px solid var(--card2);
+    background: var(--card2); color: var(--text-dim); font-family: inherit;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .chip.sel { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .hint { color: var(--text-dim); font-size: 11px; }
   /* --- Summary / start --- */
   .summary-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; color: var(--text-dim); }
   .summary-row b { color: var(--text); font-size: 17px; font-variant-numeric: tabular-nums; }
@@ -116,6 +125,7 @@
     letter-spacing: 0.18em; margin-top: 8px; text-transform: uppercase;
   }
   .round-label { text-align: center; color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+  .music-note { text-align: center; color: var(--text-dim); font-size: 12px; margin-top: 3px; letter-spacing: 0.06em; }
   .time-wrap { position: relative; overflow: hidden; border-radius: var(--radius); }
   .ripple-layer {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -269,6 +279,8 @@
       <span>Music volume</span>
       <input type="range" id="volumeSlider" min="0" max="100" value="60">
     </div>
+    <div class="toggle-row"><span>Music style <span class="hint">tap to preview</span></span></div>
+    <div class="chip-row" id="styleChips"></div>
   </div>
 
   <div class="card summary-card">
@@ -277,7 +289,7 @@
   </div>
 
   <button class="start-btn" id="startBtn">START WORKOUT</button>
-  <p class="version-note">v<span id="appVersion">4</span></p>
+  <p class="version-note">v<span id="appVersion">5</span></p>
 </div>
 
 <!-- ============ Timer screen ============ -->
@@ -288,6 +300,7 @@
     <div class="finish-stats" id="finishStats"></div>
     <div class="phase-badge" id="phaseLabel">Exercise</div>
     <div class="round-label" id="roundLabel">Round 1 / 8</div>
+    <div class="music-note" id="musicNote"></div>
     <div class="time-wrap">
       <div class="ripple-layer" id="rippleLayer"></div>
       <div class="time-display" id="timeDisplay">1:00</div>
@@ -323,6 +336,7 @@ const state = {
   voiceEnabled: true,
   musicEnabled: true,
   musicVolume: 60,
+  musicStyle: "shuffle", // a MUSIC_STYLES id, or "shuffle" for a different one each workout
 };
 
 const SETTINGS_KEY = "interval-coach-settings";
@@ -341,6 +355,10 @@ function loadSettings() {
     if (typeof saved.voiceEnabled === "boolean") state.voiceEnabled = saved.voiceEnabled;
     if (typeof saved.musicEnabled === "boolean") state.musicEnabled = saved.musicEnabled;
     if (Number.isInteger(saved.musicVolume)) state.musicVolume = clamp(saved.musicVolume, 0, 100);
+    if (typeof saved.musicStyle === "string" &&
+        (saved.musicStyle === SHUFFLE_ID || MUSIC_STYLES.some((s) => s.id === saved.musicStyle))) {
+      state.musicStyle = saved.musicStyle;
+    }
   } catch (_) { /* ignore corrupted settings and keep defaults */ }
 }
 
@@ -504,6 +522,29 @@ function initButtonIcons() {
 /* ============================================================
    Setup screen UI
    ============================================================ */
+function buildStyleChips() {
+  const wrap = $("styleChips");
+  wrap.innerHTML = "";
+  [{ id: SHUFFLE_ID, name: "Shuffle" }].concat(MUSIC_STYLES).forEach((item) => {
+    const b = document.createElement("button");
+    b.className = "chip";
+    b.dataset.styleId = item.id;
+    b.textContent = item.name;
+    b.addEventListener("click", () => {
+      state.musicStyle = item.id;
+      renderSetup();
+      // Audition the pick right away; Shuffle has nothing specific to play
+      if (item.id === SHUFFLE_ID) {
+        stopPreview();
+        if (music) music.stopAll();
+      } else {
+        previewStyle(styleById(item.id));
+      }
+    });
+    wrap.appendChild(b);
+  });
+}
+
 function renderSetup() {
   $("prepNum").textContent = state.prepareSec;
   $("exNum").textContent = state.exerciseSec;
@@ -514,6 +555,9 @@ function renderSetup() {
   $("voiceToggle").classList.toggle("on", state.voiceEnabled);
   $("musicToggle").classList.toggle("on", state.musicEnabled);
   $("volumeSlider").value = state.musicVolume;
+  document.querySelectorAll("#styleChips .chip").forEach((c) => {
+    c.classList.toggle("sel", c.dataset.styleId === state.musicStyle);
+  });
   const total = computeTotalSeconds(state);
   $("totalTimeLabel").textContent = total == null ? "∞" : fmt(total);
   $("totalRoundsLabel").textContent = isInfinite() ? "∞ (stop manually)" : state.rounds + " sets";
@@ -617,28 +661,192 @@ function stopSpeechKeepAlive() {
 
 /* ============================================================
    Generated music (Web Audio API)
-   Exercise: cool, dark minor groove. Rest: ambient pad + chimes.
+   A style supplies both halves of the soundtrack: the exercise groove
+   and the rest ambience. Styles can be picked on the setup screen or
+   shuffled, so a workout does not always sound the same.
    ============================================================ */
 function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 const MINOR_PENT = [0, 3, 5, 7, 10];
-const REST_SCALE = [0, 3, 5, 7, 10];
-const EXERCISE_CHORDS = [45, 43, 41, 43]; // A2 G2 F2 G2 — one bar (16 steps) each
+const DORIAN = [0, 2, 3, 5, 7, 9, 10];
+
+/* Every style is one bar of 16 steps; `step` is called per 16th note with
+   (engine, stepInBar, audioTime, chordRoot). Instrument levels are kept low
+   on purpose — the output bus below does the final peak control. */
+const MUSIC_STYLES = [
+  {
+    id: "drive", name: "Drive",
+    exercise: {
+      bpm: 118,
+      chords: [45, 43, 41, 43], // A2 G2 F2 G2
+      step(m, s, t, root) {
+        if (s % 4 === 0) { m.kick(t); m.beat(t, "strong"); }
+        if (s === 4 || s === 12) m.snare(t);
+        if (s % 4 === 2) m.hat(t, 0.09);
+        if (s % 4 === 3 && Math.random() < 0.4) m.hat(t, 0.045);
+        if (s === 0) m.bass(t, root, 0.9, 0.4);
+        else if (s === 6) m.bass(t, root, 0.45, 0.2);
+        else if (s === 8) m.bass(t, root, 0.75, 0.3);
+        else if (s === 14) m.bass(t, root + 3, 0.5, 0.2);
+        if (s % 4 === 2 && Math.random() < 0.22) m.lead(t, root + 12 + pick(MINOR_PENT));
+      },
+    },
+    rest: {
+      bpm: 60,
+      pad: { root: 45, intervals: [0, 3, 7, 10], cutoff: 900, lfoRate: 0.05, lfoDepth: 250 },
+      chime: { root: 81, scale: MINOR_PENT, chance: 0.5 },
+    },
+  },
+  {
+    id: "retro", name: "Retro",
+    exercise: {
+      bpm: 104,
+      chords: [38, 45, 41, 43], // D2 A2 F2 G2
+      step(m, s, t, root) {
+        if (s === 0 || s === 8) { m.kick(t, { level: 0.4 }); m.beat(t, "strong"); }
+        if (s === 10) m.kick(t, { level: 0.26 });
+        if (s === 4 || s === 12) m.snare(t, { level: 0.17, freq: 1500, q: 0.6, dur: 0.22 });
+        if (s % 2 === 0) m.hat(t, s % 4 === 0 ? 0.045 : 0.075);
+        if (s % 2 === 0) m.bass(t, root, 0.7, 0.15, { wave: "square", cutoff: 520 });
+        // four-note arpeggio riding the off-16ths
+        if (s % 2 === 1) {
+          const arp = [0, 7, 12, 15];
+          m.lead(t, root + 24 + arp[(s >> 1) % 4], { wave: "square", level: 0.05, dur: 0.18, cutoff: 2600 });
+        }
+      },
+    },
+    rest: {
+      bpm: 56,
+      pad: { root: 50, intervals: [0, 7, 10, 14], cutoff: 1100, lfoRate: 0.04, lfoDepth: 300, wave: "triangle" },
+      chime: { root: 86, scale: [0, 2, 3, 7, 10], chance: 0.45, wave: "triangle" },
+    },
+  },
+  {
+    id: "tribal", name: "Tribal",
+    exercise: {
+      bpm: 112,
+      chords: [45, 45, 43, 41],
+      step(m, s, t, root) {
+        if (s === 0 || s === 6 || s === 10) { m.kick(t, { level: 0.4, from: 120, to: 50 }); m.beat(t, "strong"); }
+        if (s === 3 || s === 11) m.tom(t, 180, 0.2);
+        if (s === 7) m.tom(t, 130, 0.18);
+        if (s === 14) m.tom(t, 250, 0.15);
+        m.shaker(t, s % 2 === 0 ? 0.045 : 0.025);
+        if (s === 0) m.bass(t, root, 0.85, 0.35, { cutoff: 320 });
+        else if (s === 11) m.bass(t, root + 7, 0.5, 0.2, { cutoff: 320 });
+        if (s === 8 && Math.random() < 0.35) m.lead(t, root + 12 + pick(MINOR_PENT), { level: 0.075, dur: 0.25 });
+      },
+    },
+    rest: {
+      bpm: 58,
+      pad: { root: 45, intervals: [0, 7, 12, 19], cutoff: 700, lfoRate: 0.06, lfoDepth: 180 },
+      chime: { root: 76, scale: [0, 3, 5, 10], chance: 0.4, dur: 2.4 },
+    },
+  },
+  {
+    id: "lofi", name: "Lo-Fi",
+    exercise: {
+      bpm: 84,
+      chords: [45, 41, 43, 40], // A2 F2 G2 E2
+      step(m, s, t, root) {
+        if (s === 0 || s === 10) { m.kick(t, { level: 0.36, from: 110, to: 45, dur: 0.24 }); m.beat(t, "strong"); }
+        if (s === 4 || s === 12) m.snare(t, { level: 0.13, freq: 1200, q: 0.8, tone: 4200 });
+        if (s % 4 === 0 || s % 4 === 3) m.hat(t, 0.045);
+        if (s % 4 === 2) m.shaker(t, 0.018);
+        if (s === 0) m.bass(t, root, 0.85, 0.5, { wave: "triangle", cutoff: 260 });
+        else if (s === 8) m.bass(t, root + 5, 0.5, 0.3, { wave: "triangle", cutoff: 260 });
+        if (s === 2 || s === 9) m.stab(t, root + 24, [0, 3, 7, 10], 0.045, 0.5);
+      },
+    },
+    rest: {
+      bpm: 52,
+      pad: { root: 41, intervals: [0, 4, 7, 11], cutoff: 800, lfoRate: 0.05, lfoDepth: 200, wave: "triangle" },
+      chime: { root: 77, scale: DORIAN, chance: 0.4, attack: 0.6, dur: 3.6 },
+    },
+  },
+  {
+    id: "rock", name: "Rock",
+    exercise: {
+      bpm: 128,
+      chords: [40, 40, 45, 43], // E2 E2 A2 G2
+      step(m, s, t, root) {
+        if (s === 0 || s === 8 || s === 11) { m.kick(t, { level: 0.4 }); m.beat(t, "strong"); }
+        if (s === 4 || s === 12) m.snare(t, { level: 0.18 });
+        if (s % 2 === 0) m.hat(t, s % 4 === 0 ? 0.085 : 0.055);
+        if (s % 2 === 0) m.bass(t, root, 0.8, 0.15, { cutoff: 600 });
+        if (s === 0 || s === 8) m.stab(t, root + 12, [0, 7, 12], 0.055, 0.28, "sawtooth");
+        if (s === 14 && Math.random() < 0.4) {
+          m.lead(t, root + 24 + pick(MINOR_PENT), { level: 0.07, dur: 0.22, cutoff: 3000 });
+        }
+      },
+    },
+    rest: {
+      bpm: 62,
+      pad: { root: 40, intervals: [0, 7, 12, 16], cutoff: 850, lfoRate: 0.07, lfoDepth: 200 },
+      chime: { root: 76, scale: [0, 2, 4, 7, 11], chance: 0.45 },
+    },
+  },
+];
+
+const SHUFFLE_ID = "shuffle";
+function styleById(id) { return MUSIC_STYLES.find((s) => s.id === id) || MUSIC_STYLES[0]; }
+
+let lastShuffledId = null;
+function pickActiveStyle() {
+  if (state.musicStyle !== SHUFFLE_ID) return styleById(state.musicStyle);
+  const pool = MUSIC_STYLES.filter((s) => s.id !== lastShuffledId);
+  const chosen = pick(pool.length ? pool : MUSIC_STYLES);
+  lastShuffledId = chosen.id;
+  return chosen;
+}
+
+/* Soft clipper for the output bus: rounds peaks off instead of letting the
+   DAC square them, which is what made bright hits sound torn on phone speakers */
+function makeSoftClipCurve(drive) {
+  const n = 2048;
+  const curve = new Float32Array(n);
+  const norm = Math.tanh(drive);
+  for (let i = 0; i < n; i++) {
+    curve[i] = Math.tanh(drive * ((i / (n - 1)) * 2 - 1)) / norm;
+  }
+  return curve;
+}
 
 class MusicEngine {
   constructor(ctx) {
     this.ctx = ctx;
+    this.style = MUSIC_STYLES[0];
     this.master = ctx.createGain();
     this.master.gain.value = 0;
-    // Compressor as the final bus keeps peaks from clipping small phone speakers
+
+    /* Output bus, in order:
+       high-pass  — drops sub energy phone speakers can only rattle on
+       high-shelf — takes the edge off hats, chimes and leads
+       compressor — catches the peaks
+       soft clip  — rounds whatever still pokes through
+       out        — final headroom so the sum never reaches full scale      */
+    this.busIn = ctx.createGain(); // one-shot effects join the chain here
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass"; hp.frequency.value = 48; hp.Q.value = 0.6;
+    const shelf = ctx.createBiquadFilter();
+    shelf.type = "highshelf"; shelf.frequency.value = 4200; shelf.gain.value = -5;
+    // Deliberately gentle: the old hard-squeezing settings pushed the average
+    // level up until the speaker itself broke up. This only catches peaks.
     this.comp = ctx.createDynamicsCompressor();
-    this.comp.threshold.value = -16;
-    this.comp.knee.value = 18;
-    this.comp.ratio.value = 8;
-    this.comp.attack.value = 0.003;
-    this.comp.release.value = 0.25;
-    this.master.connect(this.comp);
-    this.comp.connect(ctx.destination);
+    this.comp.threshold.value = -8;
+    this.comp.knee.value = 8;
+    this.comp.ratio.value = 4;
+    this.comp.attack.value = 0.006;
+    this.comp.release.value = 0.22;
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = makeSoftClipCurve(1.7);
+    shaper.oversample = "4x";
+    this.out = ctx.createGain();
+    this.out.gain.value = 0.7;
+    this.master.connect(this.busIn);
+    this.busIn.connect(hp).connect(shelf).connect(this.comp).connect(shaper).connect(this.out).connect(ctx.destination);
+
     this.mode = null; // 'exercise' | 'rest' | null
     this.paused = false;
     this.fading = false;
@@ -653,7 +861,7 @@ class MusicEngine {
     this.beatQueue = []; // scheduled beat times for the ripple animation
   }
 
-  _pushBeat(time, kind) {
+  beat(time, kind) {
     if (this.beatQueue.length < 64) this.beatQueue.push({ time, kind });
   }
 
@@ -666,6 +874,14 @@ class MusicEngine {
   }
 
   setVolume(v) { this.volume = v; this._applyGain(0.1); }
+
+  setStyle(style) {
+    if (!style || style === this.style) return;
+    this.style = style;
+    this.stepIndex = 0;
+    this.beatQueue.length = 0;
+    if (this.mode === "rest") { this._stopPad(); this._startPad(); }
+  }
 
   _setGainTarget(value, tc) { this.master.gain.setTargetAtTime(value, this.ctx.currentTime, tc); }
 
@@ -731,146 +947,183 @@ class MusicEngine {
 
   _scheduler() {
     while (this.nextNoteTime < this.ctx.currentTime + this.scheduleAheadTime) {
-      if (this.mode === "exercise") this._scheduleExerciseStep(this.stepIndex, this.nextNoteTime);
-      else if (this.mode === "rest") this._scheduleRestStep(this.stepIndex, this.nextNoteTime);
+      if (this.mode === "exercise") {
+        const ex = this.style.exercise;
+        const root = ex.chords[Math.floor(this.stepIndex / 16) % ex.chords.length];
+        ex.step(this, this.stepIndex % 16, this.nextNoteTime, root);
+      } else if (this.mode === "rest") {
+        this._scheduleRestStep(this.stepIndex % 16, this.nextNoteTime);
+      }
       this._advanceStep();
     }
   }
 
   _advanceStep() {
-    const bpm = this.mode === "exercise" ? 118 : 60;
+    const bpm = this.mode === "exercise" ? this.style.exercise.bpm : this.style.rest.bpm;
     this.nextNoteTime += 60 / bpm / 4; // 16th-note grid
     this.stepIndex++;
   }
 
-  /* Cool exercise groove: four-on-the-floor kick, tight snare on 2 & 4,
-     off-beat hats, syncopated dark bass, sparse minor-pentatonic lead. */
-  _scheduleExerciseStep(step, time) {
-    const barStep = step % 16;
-    const bar = Math.floor(step / 16) % EXERCISE_CHORDS.length;
-    const rootMidi = EXERCISE_CHORDS[bar];
-    if (barStep === 0 || barStep === 4 || barStep === 8 || barStep === 12) {
-      this._kick(time);
-      this._pushBeat(time, "strong");
-    }
-    if (barStep === 4 || barStep === 12) this._snare(time);
-    if (barStep === 2 || barStep === 6 || barStep === 10 || barStep === 14) this._hat(time, 0.18);
-    if (barStep % 4 === 3 && Math.random() < 0.4) this._hat(time, 0.08);
-    if (barStep === 0) this._bass(time, rootMidi, 0.9, 0.4);
-    else if (barStep === 6) this._bass(time, rootMidi, 0.45, 0.2);
-    else if (barStep === 8) this._bass(time, rootMidi, 0.75, 0.3);
-    else if (barStep === 14) this._bass(time, rootMidi + 3, 0.5, 0.2);
-    if (barStep % 4 === 2 && Math.random() < 0.22) {
-      const iv = MINOR_PENT[Math.floor(Math.random() * MINOR_PENT.length)];
-      this._lead(time, rootMidi + 12 + iv);
+  // Rest has the same shape in every style: a slow pad with occasional chimes
+  _scheduleRestStep(barStep, time) {
+    const c = this.style.rest.chime;
+    if (barStep % 4 === 0) this.beat(time, "soft");
+    if (barStep === 0 && Math.random() < (c.chance == null ? 0.5 : c.chance)) {
+      this.chime(time, c.root + pick(c.scale), c);
     }
   }
 
-  _scheduleRestStep(step, time) {
-    const barStep = step % 16;
-    if (barStep % 4 === 0) this._pushBeat(time, "soft");
-    if (barStep === 0 && Math.random() < 0.5) {
-      const iv = REST_SCALE[Math.floor(Math.random() * REST_SCALE.length)];
-      this._chime(time, 57 + 24 + iv);
-    }
-  }
-
-  _kick(time) {
+  kick(time, o) {
+    const { level = 0.42, from = 140, to = 42, dur = 0.2 } = o || {};
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(140, time);
-    osc.frequency.exponentialRampToValueAtTime(42, time + 0.12);
-    gain.gain.setValueAtTime(0.55, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+    osc.frequency.setValueAtTime(from, time);
+    osc.frequency.exponentialRampToValueAtTime(to, time + dur * 0.6);
+    gain.gain.setValueAtTime(level, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
     osc.connect(gain).connect(this.master);
-    osc.start(time); osc.stop(time + 0.22);
+    osc.start(time); osc.stop(time + dur + 0.02);
   }
 
-  _snare(time) {
+  snare(time, o) {
+    const { level = 0.17, freq = 1900, q = 0.9, dur = 0.12, tone = 7000 } = o || {};
     const src = this.ctx.createBufferSource();
     src.buffer = this.noiseBuffer;
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = "bandpass"; filter.frequency.value = 1900; filter.Q.value = 0.9;
+    const band = this.ctx.createBiquadFilter();
+    band.type = "bandpass"; band.frequency.value = freq; band.Q.value = q;
+    // A lid on the top end: raw noise is what shreds on small speakers
+    const lid = this.ctx.createBiquadFilter();
+    lid.type = "lowpass"; lid.frequency.value = tone;
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.28, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
-    src.connect(filter).connect(gain).connect(this.master);
-    src.start(time); src.stop(time + 0.14);
+    gain.gain.setValueAtTime(level, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    src.connect(band).connect(lid).connect(gain).connect(this.master);
+    src.start(time, Math.random() * 0.5); src.stop(time + dur + 0.02);
   }
 
-  _hat(time, vol) {
+  hat(time, vol) {
     const src = this.ctx.createBufferSource();
     src.buffer = this.noiseBuffer;
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = "highpass"; filter.frequency.value = 8000;
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = "highpass"; hp.frequency.value = 7000;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 12000;
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(vol, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
-    src.connect(filter).connect(gain).connect(this.master);
-    src.start(time); src.stop(time + 0.05);
+    src.connect(hp).connect(lp).connect(gain).connect(this.master);
+    src.start(time, Math.random() * 0.5); src.stop(time + 0.05);
   }
 
-  _bass(time, midi, vel, len) {
+  shaker(time, vol) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const band = this.ctx.createBiquadFilter();
+    band.type = "bandpass"; band.frequency.value = 6500; band.Q.value = 1.2;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(vol, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.035);
+    src.connect(band).connect(gain).connect(this.master);
+    src.start(time, Math.random() * 0.5); src.stop(time + 0.05);
+  }
+
+  tom(time, freq, level) {
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq * 1.5, time);
+    osc.frequency.exponentialRampToValueAtTime(freq, time + 0.14);
+    gain.gain.setValueAtTime(level, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+    osc.connect(gain).connect(this.master);
+    osc.start(time); osc.stop(time + 0.27);
+  }
+
+  bass(time, midi, vel, len, o) {
+    const { wave = "sawtooth", cutoff = 380, level = 0.26 } = o || {};
     const osc = this.ctx.createOscillator();
     const filter = this.ctx.createBiquadFilter();
     const gain = this.ctx.createGain();
-    osc.type = "sawtooth";
+    osc.type = wave;
     osc.frequency.value = midiToFreq(midi);
-    filter.type = "lowpass"; filter.frequency.value = 380; filter.Q.value = 1.2;
+    filter.type = "lowpass"; filter.frequency.value = cutoff; filter.Q.value = 1.2;
     gain.gain.setValueAtTime(0.0001, time);
-    gain.gain.exponentialRampToValueAtTime(0.35 * vel, time + 0.02);
+    gain.gain.exponentialRampToValueAtTime(level * vel, time + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.001, time + len);
     osc.connect(filter).connect(gain).connect(this.master);
     osc.start(time); osc.stop(time + len + 0.05);
   }
 
-  _lead(time, midi) {
+  lead(time, midi, o) {
+    const { wave = "triangle", level = 0.1, dur = 0.3, cutoff = 2200 } = o || {};
     const osc = this.ctx.createOscillator();
     const filter = this.ctx.createBiquadFilter();
     const gain = this.ctx.createGain();
-    osc.type = "triangle";
+    osc.type = wave;
     osc.frequency.value = midiToFreq(midi);
-    filter.type = "lowpass"; filter.frequency.value = 2200;
+    filter.type = "lowpass"; filter.frequency.value = cutoff;
     gain.gain.setValueAtTime(0.0001, time);
-    gain.gain.exponentialRampToValueAtTime(0.15, time + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.3);
+    gain.gain.exponentialRampToValueAtTime(level, time + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
     osc.connect(filter).connect(gain).connect(this.master);
-    osc.start(time); osc.stop(time + 0.32);
+    osc.start(time); osc.stop(time + dur + 0.02);
   }
 
-  _chime(time, midi) {
-    const osc = this.ctx.createOscillator();
+  stab(time, midi, intervals, level, dur, wave) {
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "lowpass"; filter.frequency.value = 1800;
     const gain = this.ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = midiToFreq(midi);
     gain.gain.setValueAtTime(0.0001, time);
-    gain.gain.exponentialRampToValueAtTime(0.18, time + 0.4);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + 3.2);
-    osc.connect(gain).connect(this.master);
-    osc.start(time); osc.stop(time + 3.3);
+    gain.gain.exponentialRampToValueAtTime(level, time + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    filter.connect(gain).connect(this.master);
+    intervals.forEach((iv) => {
+      const osc = this.ctx.createOscillator();
+      osc.type = wave || "sine";
+      osc.frequency.value = midiToFreq(midi + iv);
+      osc.detune.value = (Math.random() - 0.5) * 8;
+      osc.connect(filter);
+      osc.start(time); osc.stop(time + dur + 0.05);
+    });
+  }
+
+  chime(time, midi, o) {
+    const { level = 0.09, attack = 0.4, dur = 3.2, wave = "sine" } = o || {};
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    osc.type = wave;
+    osc.frequency.value = midiToFreq(midi);
+    // Chimes sit high in the mix, so keep their partials in check
+    filter.type = "lowpass"; filter.frequency.value = 3000;
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.exponentialRampToValueAtTime(level, time + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    osc.connect(filter).connect(gain).connect(this.master);
+    osc.start(time); osc.stop(time + dur + 0.1);
   }
 
   _startPad() {
     if (this.padNodes) return;
-    const root = 57; // A3
-    const chordIntervals = [0, 3, 7, 10]; // m7
+    const cfg = this.style.rest.pad;
     const osc = []; const gains = [];
     const filter = this.ctx.createBiquadFilter();
-    filter.type = "lowpass"; filter.frequency.value = 900;
+    filter.type = "lowpass"; filter.frequency.value = cfg.cutoff;
     const lfo = this.ctx.createOscillator();
     const lfoGain = this.ctx.createGain();
-    lfo.frequency.value = 0.05; lfoGain.gain.value = 250;
+    lfo.frequency.value = cfg.lfoRate; lfoGain.gain.value = cfg.lfoDepth;
     lfo.connect(lfoGain).connect(filter.frequency);
     lfo.start();
-    chordIntervals.forEach((iv, i) => {
+    cfg.intervals.forEach((iv, i) => {
       const o = this.ctx.createOscillator();
-      o.type = i % 2 === 0 ? "sine" : "triangle";
-      o.frequency.value = midiToFreq(root + iv - 12);
+      o.type = cfg.wave || (i % 2 === 0 ? "sine" : "triangle");
+      o.frequency.value = midiToFreq(cfg.root + iv - 12);
       o.detune.value = (Math.random() - 0.5) * 6;
       const g = this.ctx.createGain();
       g.gain.value = 0;
-      g.gain.linearRampToValueAtTime(0.1, this.ctx.currentTime + 2);
+      // Four sustained voices add up fast — keep each one quiet
+      g.gain.linearRampToValueAtTime(0.055, this.ctx.currentTime + 2);
       o.connect(g).connect(filter);
       o.start();
       osc.push(o); gains.push(g);
@@ -893,11 +1146,82 @@ class MusicEngine {
 let audioCtx = null;
 let music = null;
 
-function resumeAudioIfNeeded() {
-  if (audioCtx && audioCtx.state !== "running") {
-    audioCtx.resume().catch(() => {});
-  }
+/* ------------------------------------------------------------
+   iOS silent-switch handling.
+   Web Audio on iOS plays into the "ambient" audio session, which the
+   hardware mute switch silences — and flipping the switch back does not
+   revive it, while speech synthesis keeps talking. That is exactly the
+   "narration plays but music does not" case. Keeping a silent looping
+   <audio> element playing moves the page into the media-playback session,
+   which behaves like any other media app and follows the switch.
+   ------------------------------------------------------------ */
+let silentAudio = null;
+
+function makeSilentLoopUrl() {
+  const rate = 8000, frames = rate, bytes = frames * 2; // one second, 16-bit mono
+  const buf = new ArrayBuffer(44 + bytes);
+  const view = new DataView(buf);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, "RIFF"); view.setUint32(4, 36 + bytes, true); str(8, "WAVEfmt ");
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  str(36, "data"); view.setUint32(40, bytes, true);
+  // Not literally all zeros — a 1-LSB dither (about -90 dBFS, inaudible) keeps
+  // this looking like real media to anything that checks
+  for (let i = 0; i < frames; i++) view.setInt16(44 + i * 2, i % 2 ? 1 : -1, true);
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
 }
+
+function startSilentLoop() {
+  try {
+    if (!silentAudio) {
+      silentAudio = new Audio(makeSilentLoopUrl());
+      silentAudio.loop = true;
+      silentAudio.setAttribute("playsinline", "");
+      // iOS can pause it on an interruption; take the session back afterwards
+      silentAudio.addEventListener("pause", () => {
+        if (document.body.classList.contains("running")) silentAudio.play().catch(() => {});
+      });
+    }
+    const p = silentAudio.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch (_) {}
+}
+
+function stopSilentLoop() {
+  if (silentAudio) { try { silentAudio.pause(); } catch (_) {} }
+}
+
+let resumeFailures = 0;
+
+function resumeAudioIfNeeded() {
+  if (!audioCtx) return;
+  if (audioCtx.state === "running") { resumeFailures = 0; return; }
+  audioCtx.resume()
+    .then(() => {
+      if (audioCtx && audioCtx.state === "running") resumeFailures = 0;
+      else if (++resumeFailures >= 3) rebuildAudio();
+    })
+    .catch(() => { if (++resumeFailures >= 3) rebuildAudio(); });
+}
+
+// Last resort when a context refuses to come back: build a fresh one and
+// restore whatever was playing (an interrupted iOS context can stay dead)
+function rebuildAudio() {
+  resumeFailures = 0;
+  const prevMode = music ? music.mode : null;
+  const prevStyle = music ? music.style : null;
+  try { if (audioCtx) audioCtx.close(); } catch (_) {}
+  audioCtx = null;
+  music = null;
+  ensureAudio();
+  if (!music) return;
+  if (prevStyle) music.setStyle(prevStyle);
+  if (prevMode) music.setMode(prevMode);
+  if (run && run.pausedAt !== null) music.pause();
+}
+
 // A real user gesture is the most reliable way to revive a blocked context
 document.addEventListener("pointerdown", resumeAudioIfNeeded, { passive: true });
 
@@ -910,6 +1234,7 @@ function ensureAudio() {
     // calls, Siri, screen lock, etc. — try to recover whenever it changes
     audioCtx.onstatechange = () => resumeAudioIfNeeded();
   }
+  startSilentLoop();
   resumeAudioIfNeeded();
   if ("speechSynthesis" in window) {
     try {
@@ -925,6 +1250,28 @@ function applyMusicForPhase(type) {
   if (!state.musicEnabled) { music.setMode(null); return; }
   const mode = type === "exercise" ? "exercise" : type === "rest" ? "rest" : null;
   music.setMode(mode);
+}
+
+/* Tapping a style chip auditions its groove for a few seconds */
+let previewTimers = [];
+
+function stopPreview() {
+  previewTimers.forEach(clearTimeout);
+  previewTimers = [];
+}
+
+function previewStyle(style) {
+  if (!state.musicEnabled || document.body.classList.contains("running")) return;
+  stopPreview();
+  ensureAudio();
+  if (!music) return;
+  music.setMode(null);
+  music.setStyle(style);
+  music.setMode("exercise");
+  previewTimers.push(setTimeout(() => { if (music) music.fadeOut(1.5); }, 5000));
+  previewTimers.push(setTimeout(() => {
+    if (music && !document.body.classList.contains("running")) { music.stopAll(); stopSilentLoop(); }
+  }, 6600));
 }
 
 /* ============================================================
@@ -972,8 +1319,9 @@ let fxParticles = [];
 let fxBurstTimers = [];
 
 function sfxBus() {
-  // Route one-shot effects through the music compressor to avoid clipping
-  return music ? music.comp : audioCtx.destination;
+  // Route one-shot effects through the music output bus so they get the same
+  // compression and soft clipping instead of stacking on top of the music
+  return music ? music.busIn : audioCtx.destination;
 }
 
 function fireworkPop() {
@@ -984,7 +1332,7 @@ function fireworkPop() {
   osc.type = "sine";
   osc.frequency.setValueAtTime(300, t);
   osc.frequency.exponentialRampToValueAtTime(60, t + 0.25);
-  g.gain.setValueAtTime(0.18, t);
+  g.gain.setValueAtTime(0.14, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
   osc.connect(g).connect(sfxBus());
   osc.start(t); osc.stop(t + 0.32);
@@ -993,7 +1341,7 @@ function fireworkPop() {
 function playCelebrationSound() {
   if (!audioCtx || !music) return;
   const out = audioCtx.createGain();
-  out.gain.value = 0.45;
+  out.gain.value = 0.3;
   out.connect(sfxBus());
   // applause: dozens of short filtered noise bursts scattered over ~3 seconds
   for (let i = 0; i < 70; i++) {
@@ -1001,9 +1349,9 @@ function playCelebrationSound() {
     const src = audioCtx.createBufferSource();
     src.buffer = music.noiseBuffer;
     const f = audioCtx.createBiquadFilter();
-    f.type = "bandpass"; f.frequency.value = 900 + Math.random() * 2600; f.Q.value = 1.5;
+    f.type = "bandpass"; f.frequency.value = 700 + Math.random() * 2200; f.Q.value = 1.5;
     const g = audioCtx.createGain();
-    g.gain.setValueAtTime(0.07 + Math.random() * 0.12, t);
+    g.gain.setValueAtTime(0.05 + Math.random() * 0.08, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
     src.connect(f).connect(g).connect(out);
     src.start(t, Math.random() * 0.9, 0.06);
@@ -1016,7 +1364,7 @@ function playCelebrationSound() {
     osc.type = "triangle";
     osc.frequency.value = midiToFreq(76 + iv);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.16, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
     osc.connect(g).connect(out);
     osc.start(t); osc.stop(t + 0.65);
@@ -1102,7 +1450,10 @@ function releaseWakeLockFn() {
 }
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
-  if (document.body.classList.contains("running")) requestWakeLock();
+  if (document.body.classList.contains("running")) {
+    requestWakeLock();
+    startSilentLoop(); // an interruption may have dropped the media session
+  }
   resumeAudioIfNeeded();
 });
 
@@ -1214,6 +1565,8 @@ function finishRun() {
   document.body.classList.add("finished");
   document.body.classList.remove("phase-prepare", "phase-exercise", "phase-rest");
   releaseWakeLockFn();
+  // Let the celebration finish before handing the audio session back
+  setTimeout(() => { if (!document.body.classList.contains("running")) stopSilentLoop(); }, 9000);
   $("pauseBtn").style.display = "none";
   $("skipBtn").style.display = "none";
   $("stopBtn").innerHTML = btnHTML("restart", "Restart");
@@ -1221,8 +1574,12 @@ function finishRun() {
 }
 
 $("startBtn").addEventListener("click", () => {
+  stopPreview();
   ensureAudio();
   requestWakeLock();
+  const activeStyle = pickActiveStyle();
+  if (music) music.setStyle(activeStyle);
+  $("musicNote").textContent = state.musicEnabled ? "\u266a " + activeStyle.name : "";
   const seq = buildSequence(state);
   const infinite = isInfinite();
   if (infinite) { while (seq.length < 2) appendNextPhase(seq); }
@@ -1286,6 +1643,7 @@ $("stopBtn").addEventListener("click", () => {
   stopSpeechKeepAlive();
   stopFireworks();
   if (music) music.stopAll();
+  stopSilentLoop();
   releaseWakeLockFn();
   document.body.classList.remove("running", "finished", "infinite", "phase-prepare", "phase-exercise", "phase-rest");
   $("pauseBtn").style.display = "";
@@ -1296,6 +1654,7 @@ $("stopBtn").addEventListener("click", () => {
 });
 
 loadSettings();
+buildStyleChips();
 renderSetup();
 updateProgressCard();
 initButtonIcons();
