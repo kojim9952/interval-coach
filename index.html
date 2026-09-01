@@ -289,7 +289,7 @@
   </div>
 
   <button class="start-btn" id="startBtn">START WORKOUT</button>
-  <p class="version-note">v<span id="appVersion">5</span></p>
+  <p class="version-note">v<span id="appVersion">6</span></p>
 </div>
 
 <!-- ============ Timer screen ============ -->
@@ -964,7 +964,7 @@ class MusicEngine {
     this.stepIndex++;
   }
 
-  // Rest has the same shape in every style: a slow pad with occasional chimes
+  // Rest has the same shape in every style: an ocean-wave ambience with occasional water-drop chimes
   _scheduleRestStep(barStep, time) {
     const c = this.style.rest.chime;
     if (barStep % 4 === 0) this.beat(time, "soft");
@@ -1088,57 +1088,83 @@ class MusicEngine {
     });
   }
 
+  // A soft water-drop instead of a synth bell: a short pitched ping blended
+  // with a filtered noise "plink" gives it a natural, watery edge
   chime(time, midi, o) {
-    const { level = 0.09, attack = 0.4, dur = 3.2, wave = "sine" } = o || {};
+    const { level = 0.08, attack = 0.03, dur = 1.6 } = o || {};
+    const freq = midiToFreq(midi);
     const osc = this.ctx.createOscillator();
     const filter = this.ctx.createBiquadFilter();
     const gain = this.ctx.createGain();
-    osc.type = wave;
-    osc.frequency.value = midiToFreq(midi);
-    // Chimes sit high in the mix, so keep their partials in check
-    filter.type = "lowpass"; filter.frequency.value = 3000;
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq * 1.6, time);
+    osc.frequency.exponentialRampToValueAtTime(freq, time + 0.15);
+    filter.type = "lowpass"; filter.frequency.value = 2200;
     gain.gain.setValueAtTime(0.0001, time);
     gain.gain.exponentialRampToValueAtTime(level, time + attack);
     gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
     osc.connect(filter).connect(gain).connect(this.master);
     osc.start(time); osc.stop(time + dur + 0.1);
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer;
+    const band = this.ctx.createBiquadFilter();
+    band.type = "bandpass"; band.frequency.value = freq * 2; band.Q.value = 1.4;
+    const noiseGain = this.ctx.createGain();
+    noiseGain.gain.setValueAtTime(level * 0.5, time);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
+    noise.connect(band).connect(noiseGain).connect(this.master);
+    noise.start(time, Math.random() * 0.5); noise.stop(time + 0.2);
   }
 
+  // Ocean surf built from filtered noise: two mismatched LFOs drive the
+  // lowpass cutoff and two more drive the level, so swells never repeat
+  // exactly the way real waves rolling onto shore never do
   _startPad() {
     if (this.padNodes) return;
     const cfg = this.style.rest.pad;
-    const osc = []; const gains = [];
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = "lowpass"; filter.frequency.value = cfg.cutoff;
-    const lfo = this.ctx.createOscillator();
-    const lfoGain = this.ctx.createGain();
-    lfo.frequency.value = cfg.lfoRate; lfoGain.gain.value = cfg.lfoDepth;
-    lfo.connect(lfoGain).connect(filter.frequency);
-    lfo.start();
-    cfg.intervals.forEach((iv, i) => {
-      const o = this.ctx.createOscillator();
-      o.type = cfg.wave || (i % 2 === 0 ? "sine" : "triangle");
-      o.frequency.value = midiToFreq(cfg.root + iv - 12);
-      o.detune.value = (Math.random() - 0.5) * 6;
-      const g = this.ctx.createGain();
-      g.gain.value = 0;
-      // Four sustained voices add up fast — keep each one quiet
-      g.gain.linearRampToValueAtTime(0.055, this.ctx.currentTime + 2);
-      o.connect(g).connect(filter);
-      o.start();
-      osc.push(o); gains.push(g);
-    });
-    filter.connect(this.master);
-    this.padNodes = { osc, gains, filter, lfo };
+    const now = this.ctx.currentTime;
+    const rate = cfg.lfoRate || 0.05;
+    const depth = cfg.lfoDepth || 220;
+
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = "highpass"; hp.frequency.value = 140;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = "lowpass"; lp.Q.value = 0.6; lp.frequency.value = cfg.cutoff || 650;
+
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0;
+    gain.gain.linearRampToValueAtTime(0.075, now + 3);
+
+    const mkLfo = (freqHz, target, amount) => {
+      const lfo = this.ctx.createOscillator();
+      lfo.type = "sine"; lfo.frequency.value = freqHz;
+      const depthGain = this.ctx.createGain();
+      depthGain.gain.value = amount;
+      lfo.connect(depthGain).connect(target);
+      return lfo;
+    };
+    const cutoffLfoA = mkLfo(rate, lp.frequency, depth);
+    const cutoffLfoB = mkLfo(rate * 1.7, lp.frequency, depth * 0.4);
+    const swellA = mkLfo(rate * 0.6, gain.gain, 0.045);
+    const swellB = mkLfo(rate * 1.15, gain.gain, 0.02);
+
+    src.connect(hp).connect(lp).connect(gain).connect(this.master);
+    const osc = [src, cutoffLfoA, cutoffLfoB, swellA, swellB];
+    osc.forEach((n) => n.start(now));
+    this.padNodes = { osc, gains: [gain] };
   }
 
   _stopPad() {
     if (!this.padNodes) return;
-    const { osc, gains, lfo } = this.padNodes;
+    const { osc, gains } = this.padNodes;
     const now = this.ctx.currentTime;
-    gains.forEach((g) => { g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, 0.5); });
-    osc.forEach((o) => o.stop(now + 1.2));
-    lfo.stop(now + 1.2);
+    gains.forEach((g) => { g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, 0.4); });
+    osc.forEach((o) => { try { o.stop(now + 1); } catch (_) {} });
     this.padNodes = null;
   }
 }
