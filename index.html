@@ -289,7 +289,7 @@
   </div>
 
   <button class="start-btn" id="startBtn">START WORKOUT</button>
-  <p class="version-note">v<span id="appVersion">6</span></p>
+  <p class="version-note">v<span id="appVersion">7</span></p>
 </div>
 
 <!-- ============ Timer screen ============ -->
@@ -1088,17 +1088,16 @@ class MusicEngine {
     });
   }
 
-  // A soft water-drop instead of a synth bell: a short pitched ping blended
-  // with a filtered noise "plink" gives it a natural, watery edge
+  // A soft water-drop instead of a synth bell: a steady (no pitch-slide, which
+  // reads as a cartoon "boing") ping blended with a filtered noise "plink"
   chime(time, midi, o) {
-    const { level = 0.08, attack = 0.03, dur = 1.6 } = o || {};
+    const { level = 0.08, attack = 0.005, dur = 1.6 } = o || {};
     const freq = midiToFreq(midi);
     const osc = this.ctx.createOscillator();
     const filter = this.ctx.createBiquadFilter();
     const gain = this.ctx.createGain();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(freq * 1.6, time);
-    osc.frequency.exponentialRampToValueAtTime(freq, time + 0.15);
+    osc.frequency.value = freq;
     filter.type = "lowpass"; filter.frequency.value = 2200;
     gain.gain.setValueAtTime(0.0001, time);
     gain.gain.exponentialRampToValueAtTime(level, time + attack);
@@ -1112,9 +1111,9 @@ class MusicEngine {
     band.type = "bandpass"; band.frequency.value = freq * 2; band.Q.value = 1.4;
     const noiseGain = this.ctx.createGain();
     noiseGain.gain.setValueAtTime(level * 0.5, time);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.09);
     noise.connect(band).connect(noiseGain).connect(this.master);
-    noise.start(time, Math.random() * 0.5); noise.stop(time + 0.2);
+    noise.start(time, Math.random() * 0.5); noise.stop(time + 0.12);
   }
 
   // Ocean surf built from filtered noise: two mismatched LFOs drive the
