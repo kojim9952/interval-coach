@@ -289,7 +289,7 @@
   </div>
 
   <button class="start-btn" id="startBtn">START WORKOUT</button>
-  <p class="version-note">v<span id="appVersion">7</span></p>
+  <p class="version-note">v<span id="appVersion">8</span></p>
 </div>
 
 <!-- ============ Timer screen ============ -->
@@ -694,8 +694,7 @@ const MUSIC_STYLES = [
     },
     rest: {
       bpm: 60,
-      pad: { root: 45, intervals: [0, 3, 7, 10], cutoff: 900, lfoRate: 0.05, lfoDepth: 250 },
-      chime: { root: 81, scale: MINOR_PENT, chance: 0.5 },
+      chime: { root: 108, scale: [0, 1, 2], chance: 0.35, pulses: 7, rate: 21 },
     },
   },
   {
@@ -718,8 +717,7 @@ const MUSIC_STYLES = [
     },
     rest: {
       bpm: 56,
-      pad: { root: 50, intervals: [0, 7, 10, 14], cutoff: 1100, lfoRate: 0.04, lfoDepth: 300, wave: "triangle" },
-      chime: { root: 86, scale: [0, 2, 3, 7, 10], chance: 0.45, wave: "triangle" },
+      chime: { root: 110, scale: [0, 1], chance: 0.3, pulses: 6, rate: 19 },
     },
   },
   {
@@ -740,8 +738,7 @@ const MUSIC_STYLES = [
     },
     rest: {
       bpm: 58,
-      pad: { root: 45, intervals: [0, 7, 12, 19], cutoff: 700, lfoRate: 0.06, lfoDepth: 180 },
-      chime: { root: 76, scale: [0, 3, 5, 10], chance: 0.4, dur: 2.4 },
+      chime: { root: 106, scale: [0, 2, 3], chance: 0.4, pulses: 9, rate: 24 },
     },
   },
   {
@@ -761,8 +758,7 @@ const MUSIC_STYLES = [
     },
     rest: {
       bpm: 52,
-      pad: { root: 41, intervals: [0, 4, 7, 11], cutoff: 800, lfoRate: 0.05, lfoDepth: 200, wave: "triangle" },
-      chime: { root: 77, scale: DORIAN, chance: 0.4, attack: 0.6, dur: 3.6 },
+      chime: { root: 104, scale: [0, 1, 3], chance: 0.3, pulses: 6, rate: 17 },
     },
   },
   {
@@ -783,8 +779,7 @@ const MUSIC_STYLES = [
     },
     rest: {
       bpm: 62,
-      pad: { root: 40, intervals: [0, 7, 12, 16], cutoff: 850, lfoRate: 0.07, lfoDepth: 200 },
-      chime: { root: 76, scale: [0, 2, 4, 7, 11], chance: 0.45 },
+      chime: { root: 109, scale: [0, 1, 2], chance: 0.35, pulses: 8, rate: 22 },
     },
   },
 ];
@@ -964,11 +959,13 @@ class MusicEngine {
     this.stepIndex++;
   }
 
-  // Rest has the same shape in every style: an ocean-wave ambience with occasional water-drop chimes
+  // Rest has the same shape in every style: a quiet autumn-night hush with
+  // occasional suzumushi-style cricket calls, checked twice per bar so calls
+  // can overlap the way real insects never quite call in unison
   _scheduleRestStep(barStep, time) {
     const c = this.style.rest.chime;
     if (barStep % 4 === 0) this.beat(time, "soft");
-    if (barStep === 0 && Math.random() < (c.chance == null ? 0.5 : c.chance)) {
+    if ((barStep === 0 || barStep === 8) && Math.random() < (c.chance == null ? 0.35 : c.chance)) {
       this.chime(time, c.root + pick(c.scale), c);
     }
   }
@@ -1088,84 +1085,35 @@ class MusicEngine {
     });
   }
 
-  // A soft water-drop instead of a synth bell: a steady (no pitch-slide, which
-  // reads as a cartoon "boing") ping blended with a filtered noise "plink"
+  // Suzumushi-style bell-cricket call: a rapid trill of short, high, bell-like
+  // pulses from a single bug, given its own stereo position in the dark
   chime(time, midi, o) {
-    const { level = 0.08, attack = 0.005, dur = 1.6 } = o || {};
+    const { level = 0.055, pulses = 7, rate = 21 } = o || {};
     const freq = midiToFreq(midi);
-    const osc = this.ctx.createOscillator();
-    const filter = this.ctx.createBiquadFilter();
-    const gain = this.ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = freq;
-    filter.type = "lowpass"; filter.frequency.value = 2200;
-    gain.gain.setValueAtTime(0.0001, time);
-    gain.gain.exponentialRampToValueAtTime(level, time + attack);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
-    osc.connect(filter).connect(gain).connect(this.master);
-    osc.start(time); osc.stop(time + dur + 0.1);
-
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = this.noiseBuffer;
-    const band = this.ctx.createBiquadFilter();
-    band.type = "bandpass"; band.frequency.value = freq * 2; band.Q.value = 1.4;
-    const noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(level * 0.5, time);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.09);
-    noise.connect(band).connect(noiseGain).connect(this.master);
-    noise.start(time, Math.random() * 0.5); noise.stop(time + 0.12);
+    const panner = this.ctx.createStereoPanner();
+    panner.pan.value = Math.max(-0.85, Math.min(0.85, (Math.random() - 0.5) * 1.8));
+    panner.connect(this.master);
+    for (let i = 0; i < pulses; i++) {
+      const t = time + i * (1 / rate) + (Math.random() - 0.5) * 0.004;
+      const osc = this.ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = freq * (1 + (Math.random() - 0.5) * 0.01);
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = "bandpass"; filter.frequency.value = freq; filter.Q.value = 9;
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(level, t + 0.003);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.026);
+      osc.connect(filter).connect(gain).connect(panner);
+      osc.start(t); osc.stop(t + 0.04);
+    }
   }
 
-  // Ocean surf built from filtered noise: two mismatched LFOs drive the
-  // lowpass cutoff and two more drive the level, so swells never repeat
-  // exactly the way real waves rolling onto shore never do
-  _startPad() {
-    if (this.padNodes) return;
-    const cfg = this.style.rest.pad;
-    const now = this.ctx.currentTime;
-    const rate = cfg.lfoRate || 0.05;
-    const depth = cfg.lfoDepth || 220;
+  // No background bed for rest — a quiet autumn night is mostly silence
+  // between calls, so the crickets above are the only sound
+  _startPad() {}
 
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.noiseBuffer;
-    src.loop = true;
-
-    const hp = this.ctx.createBiquadFilter();
-    hp.type = "highpass"; hp.frequency.value = 140;
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = "lowpass"; lp.Q.value = 0.6; lp.frequency.value = cfg.cutoff || 650;
-
-    const gain = this.ctx.createGain();
-    gain.gain.value = 0;
-    gain.gain.linearRampToValueAtTime(0.075, now + 3);
-
-    const mkLfo = (freqHz, target, amount) => {
-      const lfo = this.ctx.createOscillator();
-      lfo.type = "sine"; lfo.frequency.value = freqHz;
-      const depthGain = this.ctx.createGain();
-      depthGain.gain.value = amount;
-      lfo.connect(depthGain).connect(target);
-      return lfo;
-    };
-    const cutoffLfoA = mkLfo(rate, lp.frequency, depth);
-    const cutoffLfoB = mkLfo(rate * 1.7, lp.frequency, depth * 0.4);
-    const swellA = mkLfo(rate * 0.6, gain.gain, 0.045);
-    const swellB = mkLfo(rate * 1.15, gain.gain, 0.02);
-
-    src.connect(hp).connect(lp).connect(gain).connect(this.master);
-    const osc = [src, cutoffLfoA, cutoffLfoB, swellA, swellB];
-    osc.forEach((n) => n.start(now));
-    this.padNodes = { osc, gains: [gain] };
-  }
-
-  _stopPad() {
-    if (!this.padNodes) return;
-    const { osc, gains } = this.padNodes;
-    const now = this.ctx.currentTime;
-    gains.forEach((g) => { g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, 0.4); });
-    osc.forEach((o) => { try { o.stop(now + 1); } catch (_) {} });
-    this.padNodes = null;
-  }
+  _stopPad() {}
 }
 
 let audioCtx = null;
