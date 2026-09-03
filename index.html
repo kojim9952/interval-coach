@@ -289,7 +289,7 @@
   </div>
 
   <button class="start-btn" id="startBtn">START WORKOUT</button>
-  <p class="version-note">v<span id="appVersion">8</span></p>
+  <p class="version-note">v<span id="appVersion">9</span></p>
 </div>
 
 <!-- ============ Timer screen ============ -->
@@ -695,6 +695,7 @@ const MUSIC_STYLES = [
     rest: {
       bpm: 60,
       chime: { root: 108, scale: [0, 1, 2], chance: 0.35, pulses: 7, rate: 21 },
+      chime2: { root: 100, scale: [0, 2], chance: 0.4, pulses: 4, rate: 11, q: 5, noiseMix: 0.3 },
     },
   },
   {
@@ -718,6 +719,7 @@ const MUSIC_STYLES = [
     rest: {
       bpm: 56,
       chime: { root: 110, scale: [0, 1], chance: 0.3, pulses: 6, rate: 19 },
+      chime2: { root: 98, scale: [0, 1], chance: 0.35, pulses: 3, rate: 9, q: 5, noiseMix: 0.3 },
     },
   },
   {
@@ -739,6 +741,7 @@ const MUSIC_STYLES = [
     rest: {
       bpm: 58,
       chime: { root: 106, scale: [0, 2, 3], chance: 0.4, pulses: 9, rate: 24 },
+      chime2: { root: 96, scale: [0, 3], chance: 0.45, pulses: 5, rate: 13, q: 4, noiseMix: 0.35 },
     },
   },
   {
@@ -759,6 +762,7 @@ const MUSIC_STYLES = [
     rest: {
       bpm: 52,
       chime: { root: 104, scale: [0, 1, 3], chance: 0.3, pulses: 6, rate: 17 },
+      chime2: { root: 95, scale: [0, 2], chance: 0.3, pulses: 3, rate: 8, q: 5, noiseMix: 0.28 },
     },
   },
   {
@@ -780,6 +784,7 @@ const MUSIC_STYLES = [
     rest: {
       bpm: 62,
       chime: { root: 109, scale: [0, 1, 2], chance: 0.35, pulses: 8, rate: 22 },
+      chime2: { root: 99, scale: [0, 1, 2], chance: 0.4, pulses: 4, rate: 12, q: 4, noiseMix: 0.32 },
     },
   },
 ];
@@ -959,14 +964,21 @@ class MusicEngine {
     this.stepIndex++;
   }
 
-  // Rest has the same shape in every style: a quiet autumn-night hush with
-  // occasional suzumushi-style cricket calls, checked twice per bar so calls
-  // can overlap the way real insects never quite call in unison
+  // Rest has the same shape in every style: a quiet autumn-night hush full of
+  // suzumushi-style cricket calls, checked four times per bar with a chance
+  // of a second bug overlapping so it reads as a small chorus, not one bug.
+  // chime2 (if the style has one) is a second, lower/rougher insect species,
+  // checked on the off-steps so the two calls interleave rather than collide
   _scheduleRestStep(barStep, time) {
     const c = this.style.rest.chime;
+    const c2 = this.style.rest.chime2;
     if (barStep % 4 === 0) this.beat(time, "soft");
-    if ((barStep === 0 || barStep === 8) && Math.random() < (c.chance == null ? 0.35 : c.chance)) {
+    if (barStep % 4 === 0 && Math.random() < (c.chance == null ? 0.6 : c.chance)) {
       this.chime(time, c.root + pick(c.scale), c);
+      if (Math.random() < 0.45) this.chime(time + Math.random() * 0.3, c.root + pick(c.scale), c);
+    }
+    if (c2 && barStep % 4 === 2 && Math.random() < (c2.chance == null ? 0.5 : c2.chance)) {
+      this.chime(time, c2.root + pick(c2.scale), c2);
     }
   }
 
@@ -1085,10 +1097,11 @@ class MusicEngine {
     });
   }
 
-  // Suzumushi-style bell-cricket call: a rapid trill of short, high, bell-like
-  // pulses from a single bug, given its own stereo position in the dark
+  // Two insect voices share this synth: a pure sine "bell" trill (suzumushi)
+  // by default, or a rougher, slower, noisier one (koorogi-style cricket)
+  // when noiseMix/q are tuned down — see chime2 configs per style below
   chime(time, midi, o) {
-    const { level = 0.055, pulses = 7, rate = 21 } = o || {};
+    const { level = 0.055, pulses = 7, rate = 21, q = 9, noiseMix = 0.12 } = o || {};
     const freq = midiToFreq(midi);
     const panner = this.ctx.createStereoPanner();
     panner.pan.value = Math.max(-0.85, Math.min(0.85, (Math.random() - 0.5) * 1.8));
@@ -1099,13 +1112,27 @@ class MusicEngine {
       osc.type = "sine";
       osc.frequency.value = freq * (1 + (Math.random() - 0.5) * 0.01);
       const filter = this.ctx.createBiquadFilter();
-      filter.type = "bandpass"; filter.frequency.value = freq; filter.Q.value = 9;
+      filter.type = "bandpass"; filter.frequency.value = freq; filter.Q.value = q;
       const gain = this.ctx.createGain();
       gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(level, t + 0.003);
+      gain.gain.exponentialRampToValueAtTime(level * (1 - noiseMix), t + 0.003);
       gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.026);
       osc.connect(filter).connect(gain).connect(panner);
       osc.start(t); osc.stop(t + 0.04);
+
+      // The buzzier bugs (koorogi) get a noise layer under the tone for rasp
+      if (noiseMix > 0) {
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.noiseBuffer;
+        const band = this.ctx.createBiquadFilter();
+        band.type = "bandpass"; band.frequency.value = freq; band.Q.value = q * 0.6;
+        const noiseGain = this.ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.0001, t);
+        noiseGain.gain.exponentialRampToValueAtTime(level * noiseMix, t + 0.003);
+        noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
+        noise.connect(band).connect(noiseGain).connect(panner);
+        noise.start(t, Math.random() * 0.5); noise.stop(t + 0.04);
+      }
     }
   }
 
